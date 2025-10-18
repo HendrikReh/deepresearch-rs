@@ -26,6 +26,23 @@ Milestone 1 focuses on validating the new GraphFlow-based workflow (Researcher â
 
 ---
 
+## Container Health Checks
+
+*Start services:* `docker-compose up -d` (requires Docker Desktop).
+
+*Verify Qdrant:* `curl http://localhost:6333/health` â†’ expect `{"status":"ok"}`.
+
+*Verify Postgres connectivity:*
+```bash
+docker compose ps
+# identify the postgres container name (e.g., deepresearch-rs-postgres-1)
+docker exec -it <container> psql -U deepresearch -d deepresearch -c "SELECT 1;"
+```
+
+*Shutdown:* `docker-compose down` when finished.
+
+---
+
 ## Manual Verification Steps
 1. Run the CLI and confirm the output includes:
    - Critic verdict line.

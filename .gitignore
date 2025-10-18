@@ -1,4 +1,4 @@
 target/
-volumes/
+data/
 /.env
 /.vscode
