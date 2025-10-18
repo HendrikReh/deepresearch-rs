@@ -6,5 +6,10 @@
 mod tasks;
 mod workflow;
 
-pub use tasks::{AnalystOutput, AnalystTask, CriticTask, ResearchTask};
-pub use workflow::run_research_session;
+pub use tasks::{
+    AnalystOutput, AnalystTask, CriticTask, FinalizeTask, ManualReviewTask, ResearchTask,
+};
+pub use workflow::{
+    run_research_session, run_research_session_with_options, BaseGraphTasks, GraphCustomizer,
+    SessionOptions,
+};

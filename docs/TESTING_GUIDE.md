@@ -21,6 +21,7 @@ Milestone 1 focuses on validating the new GraphFlow-based workflow (Researcher â
 | Workflow smoke test | Run demo session | `cargo run -p deepresearch-cli --offline` |
 | Task unit tests | (to be added) per-task validation | Add `#[cfg(test)]` blocks under `tasks.rs` |
 | Integration | End-to-end session assertion | `cargo test --offline -p deepresearch-core critic_verdict_is_non_empty` |
+| Branching Integration | Manual-review path triggers | `cargo test --offline -p deepresearch-core manual_review_branch_triggers` |
 
 ---
 

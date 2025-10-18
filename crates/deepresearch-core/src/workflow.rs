@@ -1,35 +1,68 @@
-use crate::tasks::{AnalystOutput, AnalystTask, CriticTask, ResearchTask};
+use crate::tasks::{AnalystTask, CriticTask, FinalizeTask, ManualReviewTask, ResearchTask};
 use anyhow::{anyhow, Result};
 use graph_flow::{
     ExecutionStatus, FlowRunner, GraphBuilder, InMemorySessionStorage, Session, SessionStorage,
     Task,
 };
+use serde_json::Value;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-/// Build the default DeepResearch workflow graph using graph_flow tasks.
-fn build_graph() -> (
-    Arc<graph_flow::Graph>,
-    Arc<ResearchTask>,
-    Arc<AnalystTask>,
-    Arc<CriticTask>,
-) {
-    let research = Arc::new(ResearchTask);
-    let analyst = Arc::new(AnalystTask);
-    let critic = Arc::new(CriticTask);
+/// Exposes the core tasks used in the default workflow so callers can extend the graph.
+#[derive(Clone)]
+pub struct BaseGraphTasks {
+    pub research: Arc<ResearchTask>,
+    pub analyst: Arc<AnalystTask>,
+    pub critic: Arc<CriticTask>,
+    pub finalize: Arc<FinalizeTask>,
+    pub manual_review: Arc<ManualReviewTask>,
+}
 
-    let graph = Arc::new(
-        GraphBuilder::new("deepresearch_workflow")
-            .add_task(research.clone())
-            .add_task(analyst.clone())
-            .add_task(critic.clone())
-            .add_edge(research.id(), analyst.id())
-            .add_edge(analyst.id(), critic.id())
-            .set_start_task(research.id())
-            .build(),
-    );
+impl BaseGraphTasks {
+    fn new() -> Self {
+        Self {
+            research: Arc::new(ResearchTask),
+            analyst: Arc::new(AnalystTask),
+            critic: Arc::new(CriticTask),
+            finalize: Arc::new(FinalizeTask),
+            manual_review: Arc::new(ManualReviewTask),
+        }
+    }
+}
 
-    (graph, research, analyst, critic)
+/// Customisation hook for callers to add tasks/edges before the default wiring is applied.
+pub type GraphCustomizer = dyn Fn(GraphBuilder, &BaseGraphTasks) -> GraphBuilder + Send + Sync;
+
+fn build_graph(customizer: Option<&GraphCustomizer>) -> (Arc<graph_flow::Graph>, BaseGraphTasks) {
+    let tasks = BaseGraphTasks::new();
+
+    let builder = GraphBuilder::new("deepresearch_workflow")
+        .add_task(tasks.research.clone())
+        .add_task(tasks.analyst.clone())
+        .add_task(tasks.critic.clone())
+        .add_task(tasks.finalize.clone())
+        .add_task(tasks.manual_review.clone());
+
+    let builder = if let Some(customize) = customizer {
+        customize(builder, &tasks)
+    } else {
+        builder
+    };
+
+    let builder = builder
+        .add_edge(tasks.research.id(), tasks.analyst.id())
+        .add_edge(tasks.analyst.id(), tasks.critic.id())
+        .add_conditional_edge(
+            tasks.critic.id(),
+            |ctx| ctx.get_sync::<bool>("critique.confident").unwrap_or(false),
+            tasks.finalize.id(),
+            tasks.manual_review.id(),
+        )
+        .set_start_task(tasks.research.id());
+
+    let graph = Arc::new(builder.build());
+
+    (graph, tasks)
 }
 
 fn new_session_id() -> String {
@@ -40,16 +73,63 @@ fn new_session_id() -> String {
     format!("session-{}", nanos)
 }
 
-/// Run the research workflow end-to-end for the provided query.
+/// Options for running a research session.
+pub struct SessionOptions<'a> {
+    pub query: &'a str,
+    pub session_id: Option<String>,
+    pub customize_graph: Option<Box<GraphCustomizer>>, // Additional wiring
+    pub initial_context: Vec<(String, Value)>,         // Pre-seeded context values
+}
+
+impl<'a> SessionOptions<'a> {
+    pub fn new(query: &'a str) -> Self {
+        Self {
+            query,
+            session_id: None,
+            customize_graph: None,
+            initial_context: Vec::new(),
+        }
+    }
+
+    pub fn with_session_id(mut self, session_id: impl Into<String>) -> Self {
+        self.session_id = Some(session_id.into());
+        self
+    }
+
+    pub fn with_customizer(mut self, customizer: Box<GraphCustomizer>) -> Self {
+        self.customize_graph = Some(customizer);
+        self
+    }
+
+    pub fn with_initial_context(mut self, key: impl Into<String>, value: Value) -> Self {
+        self.initial_context.push((key.into(), value));
+        self
+    }
+}
+
+/// Run the research workflow end-to-end for the provided query using default settings.
 pub async fn run_research_session(query: &str) -> Result<String> {
-    let (graph, research_task, _analyst_task, _critic_task) = build_graph();
+    run_research_session_with_options(SessionOptions::new(query)).await
+}
+
+/// Run the research workflow with custom options (session ID, graph customisation, seeded context).
+pub async fn run_research_session_with_options(options: SessionOptions<'_>) -> Result<String> {
+    let (graph, tasks) = build_graph(options.customize_graph.as_deref());
 
     let storage = Arc::new(InMemorySessionStorage::new());
-    let runner = FlowRunner::new(graph.clone(), storage.clone());
+    let runner = FlowRunner::new(graph, storage.clone());
 
-    let session_id = new_session_id();
-    let session = Session::new_from_task(session_id.clone(), research_task.id());
-    session.context.set("query", query.to_string()).await;
+    let session_id = options.session_id.clone().unwrap_or_else(new_session_id);
+    let session = Session::new_from_task(session_id.clone(), tasks.research.id());
+
+    session
+        .context
+        .set("query", options.query.to_string())
+        .await;
+    for (key, value) in options.initial_context.iter() {
+        session.context.set(key, value.clone()).await;
+    }
+
     storage
         .save(session)
         .await
@@ -74,45 +154,11 @@ pub async fn run_research_session(query: &str) -> Result<String> {
         .map_err(|err| anyhow!("failed to reload session: {err}"))?
         .ok_or_else(|| anyhow!("session missing after execution"))?;
 
-    let analysis: AnalystOutput = session
+    let final_summary: String = session
         .context
-        .get("analysis.output")
+        .get("final.summary")
         .await
-        .unwrap_or_default();
+        .unwrap_or_else(|| "No final summary recorded".to_string());
 
-    let verdict: String = session
-        .context
-        .get("critique.verdict")
-        .await
-        .unwrap_or_else(|| "No verdict recorded".to_string());
-
-    let confident: bool = session
-        .context
-        .get("critique.confident")
-        .await
-        .unwrap_or(false);
-
-    let summary = format!(
-        "{verdict}\n\nSummary:\n{}\n\nKey Insight: {}\nConfidence: {}\nSources:\n{}",
-        analysis.summary,
-        analysis.highlight,
-        if confident {
-            "High"
-        } else {
-            "Review suggested"
-        },
-        if analysis.sources.is_empty() {
-            "No sources recorded".to_string()
-        } else {
-            analysis
-                .sources
-                .into_iter()
-                .enumerate()
-                .map(|(idx, src)| format!("  {}. {}", idx + 1, src))
-                .collect::<Vec<_>>()
-                .join("\n")
-        }
-    );
-
-    Ok(summary)
+    Ok(final_summary)
 }

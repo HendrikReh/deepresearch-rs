@@ -24,10 +24,10 @@ This repo hosts a fresh graph-first implementation of DeepResearch. All agent be
 ---
 
 ## How the Graph Runs
-1. `build_graph()` registers the three agent tasks on a `GraphBuilder` and adds edges `researcher -> analyst -> critic`.  
+1. `build_graph()` registers the core tasks on a `GraphBuilder`: Researcher → Analyst → Critic → {Finalize, ManualReview}.  
 2. A new session is created with `Session::new_from_task(...)`; the query is stored in the session `Context`.  
-3. `FlowRunner::run` executes until the critic ends the workflow (`NextAction::End`).  
-4. The final report is assembled from context keys (`analysis.output`, `critique.verdict`, `critique.confident`).
+3. `FlowRunner::run` executes step-by-step; the critic decides whether to branch to `FinalizeTask` or `ManualReviewTask` via `add_conditional_edge`.  
+4. The final report is stored under `final.summary`; clients can extend the graph by providing a `GraphCustomizer` through `SessionOptions`.
 
 Agents may extend their behaviour by reading/writing new context keys; the workflow automatically carries state across tasks thanks to `graph_flow::Context`.
 
@@ -41,10 +41,48 @@ Agents may extend their behaviour by reading/writing new context keys; the workf
 | `research.findings` | `ResearchTask` | `Vec<String>` | Bullet insights gathered during retrieval. |
 | `research.sources` | `ResearchTask` | `Vec<String>` | Source URIs backing the findings. |
 | `analysis.output` | `AnalystTask` | `AnalystOutput` (summary/highlight/sources) | Structured synthesis consumed by the critic. |
-| `critique.confident` | `CriticTask` | `bool` | Indicates whether automated checks pass. |
+| `critique.confident` | `CriticTask` | `bool` | Indicates whether automated checks pass (set synchronously for conditional edge). |
 | `critique.verdict` | `CriticTask` | `String` | Human-readable verdict surfaced to the end user. |
+| `final.summary` | `FinalizeTask` / `ManualReviewTask` | `String` | Final message returned to the caller. |
+| `final.requires_manual` | `ManualReviewTask` / `FinalizeTask` | `bool` | Flags sessions requiring manual oversight. |
 
 All tasks emit tracing spans (`task.research`, `task.analyst`, `task.critic`) and attach structured fields (query, counts, confidence) for observability.
+
+---
+
+## Extending the Graph
+
+Use `SessionOptions::with_customizer` to inject additional tasks or edges before the default wiring is applied:
+
+```rust
+use deepresearch_core::{run_research_session_with_options, SessionOptions, BaseGraphTasks};
+use graph_flow::{Context, GraphBuilder, NextAction, Task, TaskResult};
+use async_trait::async_trait;
+use std::sync::Arc;
+
+struct PostProcess;
+
+#[async_trait]
+impl Task for PostProcess {
+    fn id(&self) -> &str { "post_process" }
+
+    async fn run(&self, ctx: Context) -> graph_flow::Result<TaskResult> {
+        ctx.set("final.summary", format!("{}\n(Post-processed)", ctx.get::<String>("final.summary").await.unwrap_or_default())).await;
+        Ok(TaskResult::new(None, NextAction::End))
+    }
+}
+
+let task = Arc::new(PostProcess);
+let options = SessionOptions::new("Custom query").with_customizer(Box::new(move |builder: GraphBuilder, base: &BaseGraphTasks| {
+    builder
+        .add_task(task.clone())
+        .add_edge(base.finalize.id(), task.id())
+}));
+
+let summary = run_research_session_with_options(options).await?;
+```
+
+Customisers run *before* the default edges are added, allowing you to intercept or extend the workflow.
 
 ---
 
@@ -61,7 +99,7 @@ Add new tasks by implementing `graph_flow::Task` and registering them in `build_
 ---
 
 ## Extending the Pipeline
-- **Branching:** Swap the critic edge for `add_conditional_edge` to fork based on `Context` state.  
+- **Branching:** Use the customiser hook to insert tasks or additional conditional edges.  
 - **Parallelism:** Wrap child tasks with `graph_flow::FanOutTask` (see upstream examples) if you require concurrent retrieval.  
 - **Persistence:** Replace `InMemorySessionStorage` with the `PostgresSessionStorage` from the crate when durability is required.
 

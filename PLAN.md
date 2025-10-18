@@ -24,10 +24,10 @@ This plan tracks the new graph-first implementation. Update the checkboxes and a
 - [x] Provide integration test covering a full session loop.
 - [x] Document context keys emitted by each task.
 
-### M2 — Branching & Extensibility
-- [ ] Introduce conditional edge (e.g., route to manual-review task when `critique.confident == false`).
-- [ ] Add example of injecting custom task into the graph from client code.
-- [ ] Support custom session IDs and configurable inputs via public API.
+### M2 — Branching & Extensibility ✅
+- [x] Introduce conditional edge (manual-review branch when `critique.confident == false`).
+- [x] Add example of injecting custom task into the graph from client code.
+- [x] Support custom session IDs and configurable inputs via public API (`SessionOptions`).
 
 ### M3 — Persistence & Replay
 - [ ] Swap to `PostgresSessionStorage` behind a feature flag.
@@ -74,4 +74,4 @@ This plan tracks the new graph-first implementation. Update the checkboxes and a
 
 ---
 
-*Last updated:* 2025-10-18
+*Last updated:* 2024-11-24

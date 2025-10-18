@@ -130,17 +130,13 @@ impl Task for CriticTask {
         let passes_confidence =
             analysis.summary.split('.').count() >= 2 && !analysis.sources.is_empty();
 
-        context.set("critique.confident", passes_confidence).await;
-        context
-            .set(
-                "critique.verdict",
-                if passes_confidence {
-                    "Analysis passes automated checks"
-                } else {
-                    "Insufficient evidence; requires manual review"
-                },
-            )
-            .await;
+        context.set_sync("critique.confident", passes_confidence);
+        let verdict = if passes_confidence {
+            "Analysis passes automated checks"
+        } else {
+            "Insufficient evidence; requires manual review"
+        };
+        context.set_sync("critique.verdict", verdict);
 
         info!(
             confident = passes_confidence,
@@ -151,15 +147,98 @@ impl Task for CriticTask {
         let response = format!(
             "{}\nSummary: {}\nKey Insight: {}\nSources: {}",
             context
-                .get::<String>("critique.verdict")
-                .await
+                .get_sync::<String>("critique.verdict")
                 .unwrap_or_default(),
             analysis.summary,
             analysis.highlight,
             analysis.sources.join(", ")
         );
 
-        Ok(TaskResult::new(Some(response), NextAction::End))
+        Ok(TaskResult::new(
+            Some(response),
+            NextAction::ContinueAndExecute,
+        ))
+    }
+}
+
+#[derive(Default)]
+pub struct FinalizeTask;
+
+#[async_trait]
+impl Task for FinalizeTask {
+    fn id(&self) -> &str {
+        "finalize"
+    }
+
+    #[instrument(name = "task.finalize", skip(self, context))]
+    async fn run(&self, context: Context) -> graph_flow::Result<TaskResult> {
+        let analysis: AnalystOutput = context
+            .get("analysis.output")
+            .await
+            .unwrap_or_else(AnalystOutput::default);
+
+        let verdict = context
+            .get::<String>("critique.verdict")
+            .await
+            .unwrap_or_else(|| "No verdict recorded".to_string());
+
+        let confident = context
+            .get::<bool>("critique.confident")
+            .await
+            .unwrap_or(false);
+
+        let summary = format!(
+            "{verdict}\n\nSummary:\n{}\n\nKey Insight: {}\nConfidence: {}\nSources:\n{}",
+            analysis.summary,
+            analysis.highlight,
+            if confident {
+                "High"
+            } else {
+                "Review suggested"
+            },
+            if analysis.sources.is_empty() {
+                "  (none recorded)".to_string()
+            } else {
+                analysis
+                    .sources
+                    .iter()
+                    .enumerate()
+                    .map(|(idx, src)| format!("  {}. {}", idx + 1, src))
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            },
+        );
+
+        context.set("final.summary", summary.clone()).await;
+        context.set("final.requires_manual", false).await;
+
+        info!(confident, "finalize task completed");
+
+        Ok(TaskResult::new(Some(summary), NextAction::End))
+    }
+}
+
+#[derive(Default)]
+pub struct ManualReviewTask;
+
+#[async_trait]
+impl Task for ManualReviewTask {
+    fn id(&self) -> &str {
+        "manual_review"
+    }
+
+    #[instrument(name = "task.manual_review", skip(self, context))]
+    async fn run(&self, context: Context) -> graph_flow::Result<TaskResult> {
+        let summary = String::from(
+            "Automated checks flagged low confidence. Please perform manual verification.",
+        );
+
+        context.set("final.summary", summary.clone()).await;
+        context.set("final.requires_manual", true).await;
+
+        info!("manual review required");
+
+        Ok(TaskResult::new(Some(summary), NextAction::End))
     }
 }
 

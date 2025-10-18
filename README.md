@@ -44,7 +44,8 @@ This produces a critic verdict summarising the analyst’s findings and enumerat
 |-----------|--------|---------|
 | M0 — Graph Foundation | ✅ | Core Researcher → Analyst → Critic tasks wired via `graph_flow` |
 | M1 — Observability & Testing | ✅ | Structured tracing, integration test, documented context keys |
-| M2+ | 🚧 | See `PLAN.md` for upcoming work (branching, persistence, retrieval, etc.) |
+| M2 — Branching & Extensibility | ✅ | Conditional manual-review branch, graph customiser, session options |
+| M3+ | 🚧 | See `PLAN.md` for upcoming work (persistence, retrieval, fact-checking, etc.) |
 
 Refer to `PLAN.md` for the full roadmap.
 
@@ -59,6 +60,7 @@ cargo fmt
 cargo clippy --workspace --all-targets -- -D warnings
 cargo check --offline
 cargo test --offline -p deepresearch-core critic_verdict_is_non_empty
+cargo test --offline -p deepresearch-core manual_review_branch_triggers
 ```
 
 ---
@@ -73,8 +75,48 @@ cargo test --offline -p deepresearch-core critic_verdict_is_non_empty
 | `analysis.output` | Structured summary (`AnalystOutput`). |
 | `critique.confident` | Boolean confidence flag from critic. |
 | `critique.verdict` | Human-readable verdict string. |
+| `final.summary` | Final message from `FinalizeTask`/`ManualReviewTask`. |
+| `final.requires_manual` | Marks sessions requiring manual verification. |
 
 (See `AGENTS.md` for more details.)
+
+---
+
+## Graph Customisation
+
+Inject extra tasks or edges with `SessionOptions::with_customizer`:
+
+```rust
+use async_trait::async_trait;
+use deepresearch_core::{run_research_session_with_options, BaseGraphTasks, SessionOptions};
+use graph_flow::{Context, GraphBuilder, NextAction, Task, TaskResult};
+use std::sync::Arc;
+
+struct PreCritic;
+
+#[async_trait]
+impl Task for PreCritic {
+    fn id(&self) -> &str { "pre_critic" }
+
+    async fn run(&self, ctx: Context) -> graph_flow::Result<TaskResult> {
+        // Example: tweak context before the critic executes
+        ctx.set("analysis.notes", "custom hook executed").await;
+        Ok(TaskResult::new(None, NextAction::ContinueAndExecute))
+    }
+}
+
+let task = Arc::new(PreCritic);
+let options = SessionOptions::new("Query").with_customizer(Box::new(move |builder: GraphBuilder, base: &BaseGraphTasks| {
+    builder
+        .add_task(task.clone())
+        .add_edge(base.analyst.id(), task.id())
+        .add_edge(task.id(), base.critic.id())
+}));
+
+let summary = run_research_session_with_options(options).await?;
+```
+
+Customisers run before the default edges are added, so you can intercept or extend the workflow.
 
 ---
 
@@ -87,4 +129,3 @@ Basic CI is defined in `.github/workflows/ci.yml` (fmt, clippy, tests).
 ## Licensing
 
 Released under the MIT License. See `LICENSE` for details.
-
