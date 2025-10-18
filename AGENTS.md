@@ -24,7 +24,7 @@ Reference for engineers and AI coding agents contributing to DeepResearch, a Rus
 ## System Snapshot
 - **Goal:** End-to-end autonomous research workflow with transparent reasoning, grounded citations, and configurable agents.
 - **Workspace layout:** `deepresearch-rs/` hosts multiple crates (`core`, `cli`, `api`, `agents`), shared resources (`config.toml`, `tests/`, `PRD.md`, `AGENTS.md`).
-- **Primary dependencies:** `rig-core`, `tokio`, `axum`, `qdrant-client`, `fastembed`, `clap`, `serde`, `serde_json`, `tracing`, `tracing-subscriber`, `thiserror`, `anyhow`, `reqwest`.
+- **Primary dependencies:** `graph-flow`, `tokio`, `axum`, `qdrant-client`, `fastembed`, `clap`, `serde`, `serde_json`, `tracing`, `tracing-subscriber`, `thiserror`, `anyhow`, `reqwest`.
 - **Feature toggles:** `openai`, `ollama`, `web-search` (MCP integration), `gui` (future Axum UI).
 - **Supported surfaces:** CLI REPL, REST API, future Axum GUI.
 
@@ -46,7 +46,7 @@ User Query
   │
 Planner Agent builds DAG
   │
-Rig Orchestrator executes nodes (topological order)
+Graph-Flow Executor executes nodes (topological order)
   ├─ Researcher agents in parallel (Tokio tasks)
   ├─ Analyst aggregates findings
   └─ Critic validates and annotates
@@ -54,7 +54,7 @@ Rig Orchestrator executes nodes (topological order)
 Result assembler outputs Markdown/JSON with trace + citations
 ```
 
-Rig orchestration hinges on `rig_graph.rs`, leveraging `FuturesUnordered` for concurrency, resilience on per-node failures, and `TraceCollector` events to power explainability.
+Graph-flow orchestration hinges on `graph_executor.rs`, leveraging concurrent task execution with retry logic, resilience on per-node failures, and `TraceCollector` events to power explainability.
 
 ---
 
@@ -62,9 +62,9 @@ Rig orchestration hinges on `rig_graph.rs`, leveraging `FuturesUnordered` for co
 
 | Crate/Path | Module | Summary | Notable Dependencies |
 |------------|--------|---------|----------------------|
-| `crates/deepresearch-core/src/planner.rs` | Planner | Query decomposition, DAG construction, role assignment | `rig-core` |
+| `crates/deepresearch-core/src/planner.rs` | Planner | Query decomposition, DAG construction, role assignment | `graph-flow` |
 | `crates/deepresearch-agents/src/agent.rs` | Agents | Role definitions, LLM context, messaging | OpenAI/Ollama SDK |
-| `crates/deepresearch-core/src/rig_graph.rs` | Orchestrator | DAG execution, event emission, failure handling | `rig-core`, `tokio` |
+| `crates/deepresearch-core/src/graph_executor.rs` | Orchestrator | DAG execution, event emission, failure handling | `graph-flow`, `tokio` |
 | `crates/deepresearch-core/src/memory_qdrant.rs` | Memory | Hybrid search, FastEmbed integration, namespaces | `qdrant-client`, `fastembed` |
 | `crates/deepresearch-core/src/factcheck.rs` | Fact checker | Claim verification, confidence scoring | Agent outputs |
 | `crates/deepresearch-core/src/explainability.rs` | Explainability | Trace capture, reasoning graph serialization | `serde_json`, graph events |
@@ -156,7 +156,7 @@ error!(%err, "Qdrant connection failed");
 
 ```toml
 [dependencies]
-rig-core = "0.x"         # Multi-agent orchestration
+graph-flow = "0.1"       # Multi-agent orchestration
 qdrant-client = "1.x"    # Vector DB client
 fastembed = "3.x"        # Embedding generation
 axum = "0.7"             # Web framework

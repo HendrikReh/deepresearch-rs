@@ -30,10 +30,11 @@ Structured execution plan derived from `PRD.md` for delivering the DeepResearch 
 - [x] **Security baseline**: enforce env-only secrets, session purge CLI command skeleton (`PRD.md §11`).
 
 ### Milestone 1 — Planner & Orchestration Core
-- [ ] **Task graph types**: implement `PlannerAgent`, `TaskGraph`, validation (cycle detection) (`PRD.md §5.1, §6.2`).
-- [ ] **Rig orchestrator integration**: topological execution, retry/backoff, concurrency limits (5 sessions) (`PRD.md §5.3, §12`).
-- [ ] **Event bus**: emit explainability events (`Event::Start/Finish/Message`) to collector (`PRD.md §6.2, §13`).
-- [ ] **Agent role scaffolding**: define `Researcher`, `Analyst`, `Critic` contexts and message contracts (`PRD.md §5.3`).
+- [x] **Task graph types**: implement `PlannerAgent`, `TaskGraph`, validation (cycle detection) (`PRD.md §5.1, §6.2`).
+- [x] **Graph-flow executor integration**: topological execution, retry/backoff, concurrency limits (5 sessions) (`PRD.md §5.3, §12`).
+- [x] **Event bus**: emit explainability events (`Event::Start/Finish/Message`) to collector (`PRD.md §6.2, §13`).
+- [x] **Agent role scaffolding**: define `Researcher`, `Analyst`, `Critic` contexts and message contracts (`PRD.md §5.3`).
+  - *Note (2025-10-18):* Completed core orchestration infrastructure with custom DAG implementation. Migrating to graph-flow library for production use.
 
 ### Milestone 2 — Retrieval, Memory, and Fact-Checking
 - [ ] **Qdrant client wrapper**: async traits with semaphore guard (8 concurrent searches) (`PRD.md §5.4-5.5, §6.2`).
@@ -88,4 +89,4 @@ Structured execution plan derived from `PRD.md` for delivering the DeepResearch 
 
 ---
 
-*Last updated:* 2024-11-24
+*Last updated:* 2025-10-18

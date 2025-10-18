@@ -84,7 +84,7 @@ User Query
   │
   ├─► Planner decomposes into DAG tasks
   │
-  ├─► Rig Orchestrator executes nodes
+  ├─► Graph-Flow Executor executes nodes
   │    ├─► Researcher agents (parallel web + local search)
   │    ├─► Analyst synthesizes findings
   │    └─► Critic validates and fact-checks
@@ -93,7 +93,7 @@ User Query
 ```
 
 **Tech Stack:**
-- [rig-core](https://github.com/0xPlaygrounds/rig) — Multi-agent orchestration
+- [graph-flow](https://docs.rs/graph-flow/) — Multi-agent orchestration
 - [Qdrant](https://qdrant.tech/) — Vector database for hybrid search
 - [FastEmbed](https://github.com/Anush008/fastembed-rs) — Embedding generation (BM25/dense)
 - [Axum](https://github.com/tokio-rs/axum) — Web framework

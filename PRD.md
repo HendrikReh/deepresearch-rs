@@ -4,10 +4,10 @@
 **Purpose:**  
 DeepResearch is a Rust-based, multi-agent system that autonomously gathers, analyzes, and synthesizes information on complex business queries with full traceability and explainability. It demonstrates advanced AI-native research orchestration and serves as a flagship project showcasing Hendrik Reh’s consulting and engineering capabilities.
 
-**Core Value Proposition:**  
-- Autonomously conduct deep, multi-step research using structured reasoning and fact-checked synthesis.  
-- Provide transparent reasoning graphs and source traceability.  
-- Serve as a reference implementation of **agentic orchestration in Rust** using `rig-core`, `Qdrant`, and `Axum`.
+**Core Value Proposition:**
+- Autonomously conduct deep, multi-step research using structured reasoning and fact-checked synthesis.
+- Provide transparent reasoning graphs and source traceability.
+- Serve as a reference implementation of **agentic orchestration in Rust** using `graph-flow`, `Qdrant`, and `Axum`.
 
 **Primary Domain:**  
 Business intelligence and analysis — stock research, market reports, and trend synthesis.
@@ -110,8 +110,8 @@ deepresearch query \
 
 ## 5. Core Capabilities & Features  
 
-### 5.1 Dynamic Reasoning & Task Planning  
-- **Planner Agent** decomposes queries into sub-tasks and constructs a Rig graph of actions.  
+### 5.1 Dynamic Reasoning & Task Planning
+- **Planner Agent** decomposes queries into sub-tasks and constructs a graph-flow DAG of actions.
 - Reasoning is data-driven: planner iteratively updates strategy as new facts arrive.  
 
 ### 5.2 Iterative Hypothesis Testing  
@@ -174,7 +174,7 @@ User Query
 Planner Agent
    │ builds
    ▼
-Rig Orchestrator  ──►  Dynamic DAG (nodes=actions, edges=dependencies)
+Graph-Flow Executor  ──►  Dynamic DAG (nodes=actions, edges=dependencies)
    │
    ├── Researcher Subgraph (web + local retrieval)
    ├── Analyst Subgraph   (synthesis, summarization)
@@ -184,10 +184,10 @@ Rig Orchestrator  ──►  Dynamic DAG (nodes=actions, edges=dependencies)
 Result Assembler → Markdown/JSON report + reasoning trace
 ```
 
-### 6.2 Key Components  
+### 6.2 Key Components
 | Component | Responsibility | Framework / Tool |
 |------------|----------------|------------------|
-| **Rig Orchestrator** | Execute and monitor DAG tasks | `rig-core` |
+| **Graph-Flow Executor** | Execute and monitor DAG tasks | `graph-flow` |
 | **Planner Agent** | Build task graph, assign roles | Custom module |
 | **Agents** | Perform sub-tasks (LLM-driven) | GPT-5 / Ollama SDK |
 | **Vector DB** | Memory + retrieval | Qdrant (dense + sparse) |
@@ -198,11 +198,11 @@ Result Assembler → Markdown/JSON report + reasoning trace
 | **API Server** | REST interface | Axum |
 | **GUI (future)** | Dashboard view + graph visualization | Axum + Tailwind |
 
-**Integration Contracts & Operational Notes:**  
-- Planner ↔ Rig Orchestrator: gRPC-style trait boundary returning `TaskGraph` with explicit dependency list; orchestrator rejects graphs with cycles.  
-- Agents ↔ Memory: all reads/writes wrapped in async traits with backpressure (`Semaphore` capped at 8 concurrent hybrid searches) to protect Qdrant latency.  
-- Fact Checker ↔ Retrieval: fact-check requests include `claim_id`, `expected_sources`, and fallback to cached embeddings when remote search fails.  
-- Explainability Collector emits structured events (`Event::Start`, `Event::Finish`, `Event::Message`) appended to `trace_sink` channel; consumers must ack within 500 ms or events are flushed to disk.  
+**Integration Contracts & Operational Notes:**
+- Planner ↔ Graph-Flow Executor: trait boundary returning `TaskGraph` with explicit dependency list; executor validates DAG structure before execution.
+- Agents ↔ Memory: all reads/writes wrapped in async traits with backpressure (`Semaphore` capped at 8 concurrent hybrid searches) to protect Qdrant latency.
+- Fact Checker ↔ Retrieval: fact-check requests include `claim_id`, `expected_sources`, and fallback to cached embeddings when remote search fails.
+- Explainability Collector emits structured events (`Event::Start`, `Event::Finish`, `Event::Message`) appended to `trace_sink` channel; consumers must ack within 500 ms or events are flushed to disk.
 - Error propagation: node failures bubble with `TaskError` (reason, retryable flag). Retryable nodes are automatically rescheduled up to 2 times with exponential backoff starting at 1 second.
 
 ---
@@ -290,11 +290,11 @@ deepresearch explain --last
 
 ## 13. Explainability Model  
 
-- All Rig events (`Start`, `Finish`, `Message`) emitted to `TraceCollector`.  
-- Collector aggregates → `graph_trace.json`.  
-- Graph structure:   
-  - Nodes = actions or agent sub-tasks  
-  - Edges = dependencies and message flows  
+- All graph-flow execution events (`Start`, `Finish`, `Message`) emitted to `TraceCollector`.
+- Collector aggregates → `graph_trace.json`.
+- Graph structure:
+  - Nodes = actions or agent sub-tasks
+  - Edges = dependencies and message flows
 - CLI: `--explain` prints summary tree; GUI: renders interactive DAG.
 
 ---
@@ -335,5 +335,7 @@ deepresearch explain --last
 
 ---
 
-✅ **Status:** Specification locked for implementation.  
-**Next step:** Translate modules into Codex CLI tasks (`agent.rs`, `planner.rs`, `rig_graph.rs`, `factcheck.rs`, `cli.rs`, `memory_qdrant.rs`).  
+✅ **Status:** Specification locked for implementation.
+**Next step:** Translate modules into implementation tasks (`agent.rs`, `planner.rs`, `graph_executor.rs`, `factcheck.rs`, `cli.rs`, `memory_qdrant.rs`).  
+
+*Last updated:* 2025-10-18

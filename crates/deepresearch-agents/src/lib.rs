@@ -1,14 +1,22 @@
-//! Agent role definitions (placeholder for milestone 1+).
+//! Agent implementations for the DeepResearch multi-agent system.
+//!
+//! This crate provides the core agent roles:
+//! - Researcher: information retrieval via web and local search
+//! - Analyst: synthesis and report generation
+//! - Critic: fact-checking and validation
+//!
+//! Each agent implements the Agent trait and can be executed within
+//! the orchestration framework.
 
-use deepresearch_core::TaskError;
-use tracing::info;
+mod agent_context;
+mod analyst;
+mod critic;
+mod researcher;
 
-/// Placeholder researcher role to be expanded in later milestones.
-pub struct ResearcherAgent;
+pub use agent_context::{Agent, AgentContext, AgentMessage, AgentResult, SourceReference};
+pub use analyst::AnalystAgent;
+pub use critic::CriticAgent;
+pub use researcher::ResearcherAgent;
 
-impl ResearcherAgent {
-    pub async fn execute(&self, _query: &str) -> Result<(), TaskError> {
-        info!("researcher agent skeleton executed");
-        Ok(())
-    }
-}
+// Re-export async_trait for agent implementations
+pub use async_trait::async_trait;

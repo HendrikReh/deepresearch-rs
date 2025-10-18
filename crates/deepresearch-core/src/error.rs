@@ -15,6 +15,12 @@ pub enum DeepResearchError {
         #[source]
         source: std::io::Error,
     },
+    #[error("planning error: {0}")]
+    PlanningError(String),
+    #[error("orchestration error: {0}")]
+    OrchestrationError(String),
+    #[error("task error: {0}")]
+    TaskFailure(#[from] TaskError),
     #[error(transparent)]
     Other(#[from] anyhow::Error),
 }
@@ -38,6 +44,10 @@ impl TaskError {
             reason: reason.into(),
             retryable,
         }
+    }
+
+    pub fn is_retryable(&self) -> bool {
+        self.retryable
     }
 }
 
