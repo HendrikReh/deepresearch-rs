@@ -1,14 +1,3 @@
-# Rust build artifacts
 target/
-
-
-# Environment and secrets
-.env
-.env.local
-.env.*.local
-auth.json
-*.key
-*.pem
-
-# OS-specific
-.DS_Store
+/.env
+/.vscode
