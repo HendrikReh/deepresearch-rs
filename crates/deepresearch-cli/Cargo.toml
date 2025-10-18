@@ -1,0 +1,16 @@
+[package]
+name = "deepresearch-cli"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = { workspace = true }
+clap = { workspace = true }
+deepresearch-core = { path = "../deepresearch-core" }
+serde = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+[[bin]]
+name = "deepresearch-cli"
+path = "src/main.rs"

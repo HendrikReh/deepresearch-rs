@@ -1,0 +1,11 @@
+[package]
+name = "deepresearch-agents"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+deepresearch-core = { path = "../deepresearch-core" }
+tracing = { workspace = true }
