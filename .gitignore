@@ -1,64 +1,14 @@
-# Rust
-/target
-**/*.rs.bk
-*.pdb
+# Rust build artifacts
+target/
 
-# Cargo
-Cargo.lock
 
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-.DS_Store
-
-# Environment
+# Environment and secrets
 .env
 .env.local
 .env.*.local
-
-# Secrets & Auth
 auth.json
 *.key
 *.pem
 
-# Logs
-*.log
-logs/
-data/logs/
-
-# Session Data
-sessions/
-*.session.json
-
-# Qdrant Data
-qdrant_data/
-*.qdrant
-
-# Testing
-coverage/
-*.profraw
-
-# Documentation Build
-/target/doc
-
-# Temporary Files
-tmp/
-temp/
-*.tmp
-
-# Flamegraph
-flamegraph.svg
-perf.data
-perf.data.old
-
-# macOS
+# OS-specific
 .DS_Store
-.AppleDouble
-.LSOverride
-
-# Backup files
-*.bak
-*.backup
