@@ -16,6 +16,7 @@ Milestone 1 focuses on validating the new GraphFlow-based workflow (Researcher â
 | Area | Test | Command / Notes |
 |------|------|-----------------|
 | Formatting | Ensure consistent style | `cargo fmt` |
+| Linting | Enforce Clippy lints | `cargo clippy --workspace --all-targets -- -D warnings` |
 | Compilation | Offline build (no network) | `cargo check --offline` |
 | Workflow smoke test | Run demo session | `cargo run -p deepresearch-cli --offline` |
 | Task unit tests | (to be added) per-task validation | Add `#[cfg(test)]` blocks under `tasks.rs` |
@@ -34,7 +35,7 @@ Milestone 1 focuses on validating the new GraphFlow-based workflow (Researcher â
 ---
 
 ## Future Automation Checklist
-- [ ] Add async test asserting `run_research_session` returns a non-empty verdict.
+- [x] Add async test asserting `run_research_session` returns a non-empty verdict.
 - [ ] Snapshot-test the critic output string for regression detection.
 - [ ] Instrument tracing spans and assert they appear during test runs.
 

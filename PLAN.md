@@ -19,10 +19,10 @@ This plan tracks the new graph-first implementation. Update the checkboxes and a
 - [x] Build linear workflow with `GraphBuilder` and execute via `FlowRunner`.
 - [x] Wire CLI to run `run_research_session` and print the critic verdict.
 
-### M1 — Observability & Testing
-- [ ] Add structured tracing (span per task) and log formatting defaults.
-- [ ] Provide integration test covering a full session loop.
-- [ ] Document context keys emitted by each task.
+### M1 — Observability & Testing ✅
+- [x] Add structured tracing (span per task) and log formatting defaults.
+- [x] Provide integration test covering a full session loop.
+- [x] Document context keys emitted by each task.
 
 ### M2 — Branching & Extensibility
 - [ ] Introduce conditional edge (e.g., route to manual-review task when `critique.confident == false`).

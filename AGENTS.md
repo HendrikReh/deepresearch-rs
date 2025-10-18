@@ -33,6 +33,21 @@ Agents may extend their behaviour by reading/writing new context keys; the workf
 
 ---
 
+## Shared Context Keys
+
+| Key | Producer | Type | Purpose |
+|-----|----------|------|---------|
+| `query` | `ResearchTask` (seeded via workflow) | `String` | User prompt driving the session. |
+| `research.findings` | `ResearchTask` | `Vec<String>` | Bullet insights gathered during retrieval. |
+| `research.sources` | `ResearchTask` | `Vec<String>` | Source URIs backing the findings. |
+| `analysis.output` | `AnalystTask` | `AnalystOutput` (summary/highlight/sources) | Structured synthesis consumed by the critic. |
+| `critique.confident` | `CriticTask` | `bool` | Indicates whether automated checks pass. |
+| `critique.verdict` | `CriticTask` | `String` | Human-readable verdict surfaced to the end user. |
+
+All tasks emit tracing spans (`task.research`, `task.analyst`, `task.critic`) and attach structured fields (query, counts, confidence) for observability.
+
+---
+
 ## Development Workflow
 
 ```bash

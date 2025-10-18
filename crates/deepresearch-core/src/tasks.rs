@@ -2,6 +2,7 @@ use async_trait::async_trait;
 use graph_flow::{Context, NextAction, Task, TaskResult};
 use serde::{Deserialize, Serialize};
 use tokio::time::{sleep, Duration};
+use tracing::{debug, info, instrument};
 
 /// Utilities shared across tasks.
 fn default_sources() -> Vec<String> {
@@ -20,6 +21,7 @@ impl Task for ResearchTask {
         "researcher"
     }
 
+    #[instrument(name = "task.research", skip(self, context))]
     async fn run(&self, context: Context) -> graph_flow::Result<TaskResult> {
         let query: String = context
             .get("query")
@@ -29,14 +31,24 @@ impl Task for ResearchTask {
         // Simulate retrieval latency
         sleep(Duration::from_millis(150)).await;
 
+        info!(%query, "researcher collecting findings");
+
         let findings = vec![
             format!("Identified three primary drivers impacting {}", query),
             "Global demand continues to outpace supply in Q4 forecasts".to_string(),
             "Capital expenditure is shifting toward sustainable extraction methods".to_string(),
         ];
 
+        let sources = default_sources();
+
         context.set("research.findings", &findings).await;
-        context.set("research.sources", default_sources()).await;
+        context.set("research.sources", &sources).await;
+
+        debug!(
+            findings_count = findings.len(),
+            sources = ?sources,
+            "research task populated context"
+        );
 
         Ok(TaskResult::new(
             Some(format!("Research completed for \"{}\"", query)),
@@ -54,12 +66,19 @@ impl Task for AnalystTask {
         "analyst"
     }
 
+    #[instrument(name = "task.analyst", skip(self, context))]
     async fn run(&self, context: Context) -> graph_flow::Result<TaskResult> {
         let findings: Vec<String> = context.get("research.findings").await.unwrap_or_default();
         let sources: Vec<String> = context
             .get("research.sources")
             .await
             .unwrap_or_else(default_sources);
+
+        debug!(
+            findings_count = findings.len(),
+            sources_count = sources.len(),
+            "analyst synthesizing results"
+        );
 
         let summary = if findings.is_empty() {
             "No findings available; analyst requires additional research input".to_string()
@@ -79,6 +98,12 @@ impl Task for AnalystTask {
 
         context.set("analysis.output", &structured).await;
 
+        info!(
+            summary = %structured.summary,
+            key_insight = %structured.highlight,
+            "analyst produced structured summary"
+        );
+
         Ok(TaskResult::new(
             Some("Analyst prepared synthesis".to_string()),
             NextAction::ContinueAndExecute,
@@ -95,6 +120,7 @@ impl Task for CriticTask {
         "critic"
     }
 
+    #[instrument(name = "task.critic", skip(self, context))]
     async fn run(&self, context: Context) -> graph_flow::Result<TaskResult> {
         let analysis: AnalystOutput = context
             .get("analysis.output")
@@ -115,6 +141,12 @@ impl Task for CriticTask {
                 },
             )
             .await;
+
+        info!(
+            confident = passes_confidence,
+            sources = analysis.sources.len(),
+            "critic evaluated analysis"
+        );
 
         let response = format!(
             "{}\nSummary: {}\nKey Insight: {}\nSources: {}",

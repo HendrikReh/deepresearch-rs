@@ -14,9 +14,9 @@ fn build_graph() -> (
     Arc<AnalystTask>,
     Arc<CriticTask>,
 ) {
-    let research = Arc::new(ResearchTask::default());
-    let analyst = Arc::new(AnalystTask::default());
-    let critic = Arc::new(CriticTask::default());
+    let research = Arc::new(ResearchTask);
+    let analyst = Arc::new(AnalystTask);
+    let critic = Arc::new(CriticTask);
 
     let graph = Arc::new(
         GraphBuilder::new("deepresearch_workflow")
