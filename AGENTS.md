@@ -104,3 +104,8 @@ Add new tasks by implementing `graph_flow::Task` and registering them in `build_
 - **Persistence:** Replace `InMemorySessionStorage` with the `PostgresSessionStorage` from the crate when durability is required.
 
 Document any new context keys or task IDs in this file to keep downstream contributors aligned.
+
+### Storage Backends & Session Control
+- **In-memory (default):** `SessionOptions::new(query)` stores sessions only for the duration of the process.  
+- **Postgres:** Compile with `--features postgres-session` (or enable in `Cargo.toml`) and call `SessionOptions::with_postgres_storage(database_url)` / `ResumeOptions::with_postgres_storage(...)` to persist sessions.  
+- **Resume:** Use `ResumeOptions::new(session_id)` + `resume_research_session` to continue an existing workflow (CLI support via `deepresearch-cli resume`).

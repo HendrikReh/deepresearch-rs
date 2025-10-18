@@ -30,11 +30,39 @@ cargo clippy --workspace --all-targets -- -D warnings
 # Run tests (offline if dependencies are cached)
 cargo test --workspace --offline
 
-# Execute the demo workflow
-cargo run --offline -p deepresearch-cli
+# Start local stack (requires Docker Desktop)
+docker-compose up -d
+
+# Execute the demo workflow (in-memory sessions)
+cargo run --offline -p deepresearch-cli run
+
+# Resume an existing session
+cargo run --offline -p deepresearch-cli resume --session <uuid>
+
+# Use Postgres-backed sessions
+DATABASE_URL=postgres://deepresearch:deepresearch@localhost:5432/deepresearch \\
+  cargo run --offline -F postgres-session -p deepresearch-cli run
 ```
 
 This produces a critic verdict summarising the analyst’s findings and enumerating supporting sources.
+
+---
+
+## Local Stack (Qdrant + Postgres)
+
+The repository ships with a simple `docker-compose.yml` that launches Qdrant and Postgres:
+
+```bash
+docker-compose up -d
+
+# Optional: inspect services
+docker ps
+
+# Tear down when finished
+docker-compose down
+```
+
+Postgres sessions require `DATABASE_URL` to point at the running container (see the quick-start snippet above). In-memory storage remains the default for quick experiments.
 
 ---
 
@@ -45,7 +73,8 @@ This produces a critic verdict summarising the analyst’s findings and enumerat
 | M0 — Graph Foundation | ✅ | Core Researcher → Analyst → Critic tasks wired via `graph_flow` |
 | M1 — Observability & Testing | ✅ | Structured tracing, integration test, documented context keys |
 | M2 — Branching & Extensibility | ✅ | Conditional manual-review branch, graph customiser, session options |
-| M3+ | 🚧 | See `PLAN.md` for upcoming work (persistence, retrieval, fact-checking, etc.) |
+| M3 — Persistence & Replay | 🚧 | Postgres session storage, resume APIs, docker-compose (see `PLAN.md`) |
+| M4+ | 🚧 | See `PLAN.md` for upcoming work (retrieval, fact-checking, explainability, etc.) |
 
 Refer to `PLAN.md` for the full roadmap.
 
@@ -61,6 +90,23 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo check --offline
 cargo test --offline -p deepresearch-core critic_verdict_is_non_empty
 cargo test --offline -p deepresearch-core manual_review_branch_triggers
+cargo test --offline -p deepresearch-core resume_session_returns_summary
+```
+
+---
+
+## CLI Commands
+
+```bash
+# Run new session
+cargo run --offline -p deepresearch-cli run --query "Compare EV supply chains"
+
+# Resume existing session (requires persistent storage)
+cargo run --offline -p deepresearch-cli resume --session <uuid>
+
+# Use Postgres-backed sessions (feature flag + DATABASE_URL)
+DATABASE_URL=postgres://deepresearch:deepresearch@localhost:5432/deepresearch \
+  cargo run --offline -F postgres-session -p deepresearch-cli run --session $(uuidgen)
 ```
 
 ---

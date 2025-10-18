@@ -3,8 +3,13 @@ name = "deepresearch-cli"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+default = []
+postgres-session = ["deepresearch-core/postgres-session"]
+
 [dependencies]
 anyhow = { workspace = true }
+clap = { workspace = true }
 deepresearch-core = { path = "../deepresearch-core" }
 tokio = { workspace = true }
 tracing = { workspace = true }

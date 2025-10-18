@@ -14,6 +14,7 @@ description = "DeepResearch multi-agent orchestration via graph_flow"
 [workspace.dependencies]
 anyhow = "1"
 async-trait = "0.1"
+clap = { version = "4", features = ["derive"] }
 graph-flow = "0.1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -21,3 +22,4 @@ thiserror = "1"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
+uuid = { version = "1", features = ["v4"] }

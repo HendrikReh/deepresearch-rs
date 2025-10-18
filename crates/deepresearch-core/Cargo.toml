@@ -6,6 +6,10 @@ edition = "2021"
 [lib]
 path = "src/lib.rs"
 
+[features]
+default = []
+postgres-session = []
+
 [dependencies]
 anyhow = { workspace = true }
 async-trait = { workspace = true }
@@ -14,3 +18,4 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
+uuid = { workspace = true }

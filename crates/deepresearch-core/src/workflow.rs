@@ -6,9 +6,12 @@ use graph_flow::{
 };
 use serde_json::Value;
 use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
+use uuid::Uuid;
 
-/// Exposes the core tasks used in the default workflow so callers can extend the graph.
+#[cfg(feature = "postgres-session")]
+use graph_flow::storage_postgres::PostgresSessionStorage;
+
+/// Bundle of the default tasks used in the DeepResearch workflow.
 #[derive(Clone)]
 pub struct BaseGraphTasks {
     pub research: Arc<ResearchTask>,
@@ -30,8 +33,30 @@ impl BaseGraphTasks {
     }
 }
 
-/// Customisation hook for callers to add tasks/edges before the default wiring is applied.
+/// Hook for callers to mutate the graph before default wiring occurs.
 pub type GraphCustomizer = dyn Fn(GraphBuilder, &BaseGraphTasks) -> GraphBuilder + Send + Sync;
+
+#[derive(Clone, Default)]
+pub enum StorageChoice {
+    #[default]
+    InMemory,
+    #[cfg(feature = "postgres-session")]
+    Postgres {
+        database_url: String,
+    },
+    Custom {
+        storage: Arc<dyn SessionStorage>,
+    },
+}
+
+impl StorageChoice {
+    #[cfg(feature = "postgres-session")]
+    pub fn postgres(database_url: impl Into<String>) -> Self {
+        StorageChoice::Postgres {
+            database_url: database_url.into(),
+        }
+    }
+}
 
 fn build_graph(customizer: Option<&GraphCustomizer>) -> (Arc<graph_flow::Graph>, BaseGraphTasks) {
     let tasks = BaseGraphTasks::new();
@@ -65,20 +90,31 @@ fn build_graph(customizer: Option<&GraphCustomizer>) -> (Arc<graph_flow::Graph>,
     (graph, tasks)
 }
 
-fn new_session_id() -> String {
-    let nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_nanos())
-        .unwrap_or(0);
-    format!("session-{}", nanos)
+async fn init_storage(choice: &StorageChoice) -> Result<Arc<dyn SessionStorage>> {
+    match choice {
+        StorageChoice::InMemory => Ok(Arc::new(InMemorySessionStorage::new())),
+        #[cfg(feature = "postgres-session")]
+        StorageChoice::Postgres { database_url } => {
+            let storage = PostgresSessionStorage::connect(database_url)
+                .await
+                .map_err(|err| anyhow!("failed to connect Postgres session storage: {err}"))?;
+            Ok(Arc::new(storage))
+        }
+        StorageChoice::Custom { storage } => Ok(storage.clone()),
+    }
 }
 
-/// Options for running a research session.
+fn new_session_id() -> String {
+    Uuid::new_v4().to_string()
+}
+
+/// Options for running a new research session.
 pub struct SessionOptions<'a> {
     pub query: &'a str,
     pub session_id: Option<String>,
-    pub customize_graph: Option<Box<GraphCustomizer>>, // Additional wiring
-    pub initial_context: Vec<(String, Value)>,         // Pre-seeded context values
+    pub customize_graph: Option<Box<GraphCustomizer>>,
+    pub initial_context: Vec<(String, Value)>,
+    pub storage: StorageChoice,
 }
 
 impl<'a> SessionOptions<'a> {
@@ -88,6 +124,7 @@ impl<'a> SessionOptions<'a> {
             session_id: None,
             customize_graph: None,
             initial_context: Vec::new(),
+            storage: StorageChoice::InMemory,
         }
     }
 
@@ -105,6 +142,29 @@ impl<'a> SessionOptions<'a> {
         self.initial_context.push((key.into(), value));
         self
     }
+
+    pub fn with_storage(mut self, storage: StorageChoice) -> Self {
+        self.storage = storage;
+        self
+    }
+
+    pub fn with_shared_storage(mut self, storage: Arc<dyn SessionStorage>) -> Self {
+        self.storage = StorageChoice::Custom { storage };
+        self
+    }
+
+    #[cfg(feature = "postgres-session")]
+    pub fn with_postgres_storage(mut self, database_url: impl Into<String>) -> Self {
+        self.storage = StorageChoice::postgres(database_url);
+        self
+    }
+}
+
+fn extract_final_summary(session: &Session) -> String {
+    session
+        .context
+        .get_sync::<String>("final.summary")
+        .unwrap_or_else(|| "No final summary recorded".to_string())
 }
 
 /// Run the research workflow end-to-end for the provided query using default settings.
@@ -112,11 +172,10 @@ pub async fn run_research_session(query: &str) -> Result<String> {
     run_research_session_with_options(SessionOptions::new(query)).await
 }
 
-/// Run the research workflow with custom options (session ID, graph customisation, seeded context).
+/// Run the research workflow with custom options (session ID, storage, graph customisation, seeded context).
 pub async fn run_research_session_with_options(options: SessionOptions<'_>) -> Result<String> {
     let (graph, tasks) = build_graph(options.customize_graph.as_deref());
-
-    let storage = Arc::new(InMemorySessionStorage::new());
+    let storage = init_storage(&options.storage).await?;
     let runner = FlowRunner::new(graph, storage.clone());
 
     let session_id = options.session_id.clone().unwrap_or_else(new_session_id);
@@ -135,9 +194,16 @@ pub async fn run_research_session_with_options(options: SessionOptions<'_>) -> R
         .await
         .map_err(|err| anyhow!("failed to persist session: {err}"))?;
 
+    execute_until_complete(&runner, &session_id).await?;
+
+    let session = load_session(&storage, &session_id).await?;
+    Ok(extract_final_summary(&session))
+}
+
+async fn execute_until_complete(runner: &FlowRunner, session_id: &str) -> Result<()> {
     loop {
         let result = runner
-            .run(&session_id)
+            .run(session_id)
             .await
             .map_err(|err| anyhow!("graph execution failure: {err}"))?;
 
@@ -147,18 +213,66 @@ pub async fn run_research_session_with_options(options: SessionOptions<'_>) -> R
             ExecutionStatus::Error(message) => return Err(anyhow!(message)),
         }
     }
+    Ok(())
+}
 
-    let session = storage
-        .get(&session_id)
+async fn load_session(storage: &Arc<dyn SessionStorage>, session_id: &str) -> Result<Session> {
+    storage
+        .get(session_id)
         .await
-        .map_err(|err| anyhow!("failed to reload session: {err}"))?
-        .ok_or_else(|| anyhow!("session missing after execution"))?;
+        .map_err(|err| anyhow!("failed to load session: {err}"))?
+        .ok_or_else(|| anyhow!("session '{session_id}' not found"))
+}
 
-    let final_summary: String = session
-        .context
-        .get("final.summary")
-        .await
-        .unwrap_or_else(|| "No final summary recorded".to_string());
+/// Options for resuming an existing session.
+pub struct ResumeOptions {
+    pub session_id: String,
+    pub customize_graph: Option<Box<GraphCustomizer>>,
+    pub storage: StorageChoice,
+}
 
-    Ok(final_summary)
+impl ResumeOptions {
+    pub fn new(session_id: impl Into<String>) -> Self {
+        Self {
+            session_id: session_id.into(),
+            customize_graph: None,
+            storage: StorageChoice::InMemory,
+        }
+    }
+
+    pub fn with_customizer(mut self, customizer: Box<GraphCustomizer>) -> Self {
+        self.customize_graph = Some(customizer);
+        self
+    }
+
+    pub fn with_storage(mut self, storage: StorageChoice) -> Self {
+        self.storage = storage;
+        self
+    }
+
+    pub fn with_shared_storage(mut self, storage: Arc<dyn SessionStorage>) -> Self {
+        self.storage = StorageChoice::Custom { storage };
+        self
+    }
+
+    #[cfg(feature = "postgres-session")]
+    pub fn with_postgres_storage(mut self, database_url: impl Into<String>) -> Self {
+        self.storage = StorageChoice::postgres(database_url);
+        self
+    }
+}
+
+/// Resume a previously started session and return the latest summary.
+pub async fn resume_research_session(options: ResumeOptions) -> Result<String> {
+    let (graph, _tasks) = build_graph(options.customize_graph.as_deref());
+    let storage = init_storage(&options.storage).await?;
+    let runner = FlowRunner::new(graph, storage.clone());
+
+    // Ensure session exists before attempting to resume
+    load_session(&storage, &options.session_id).await?;
+
+    execute_until_complete(&runner, &options.session_id).await?;
+
+    let session = load_session(&storage, &options.session_id).await?;
+    Ok(extract_final_summary(&session))
 }

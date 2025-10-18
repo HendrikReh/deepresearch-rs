@@ -29,10 +29,11 @@ This plan tracks the new graph-first implementation. Update the checkboxes and a
 - [x] Add example of injecting custom task into the graph from client code.
 - [x] Support custom session IDs and configurable inputs via public API (`SessionOptions`).
 
-### M3 — Persistence & Replay
-- [ ] Swap to `PostgresSessionStorage` behind a feature flag.
-- [ ] Implement helper to resume sessions and fetch latest `ExecutionResult`.
-- [ ] Add CLI argument to resume from an existing session.
+### M3 — Persistence & Replay ✅
+- [x] Add docker-compose services for Qdrant + Postgres (local development stack).
+- [x] Swap to `PostgresSessionStorage` behind a feature flag.
+- [x] Implement helper to resume sessions and fetch latest `ExecutionResult`.
+- [x] Add CLI argument to resume from an existing session.
 
 ### M4 — Memory & Retrieval Layer
 - [ ] Integrate Qdrant client with per-session namespaces and async backpressure limits.

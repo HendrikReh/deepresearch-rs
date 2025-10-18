@@ -10,6 +10,6 @@ pub use tasks::{
     AnalystOutput, AnalystTask, CriticTask, FinalizeTask, ManualReviewTask, ResearchTask,
 };
 pub use workflow::{
-    run_research_session, run_research_session_with_options, BaseGraphTasks, GraphCustomizer,
-    SessionOptions,
+    resume_research_session, run_research_session, run_research_session_with_options,
+    BaseGraphTasks, GraphCustomizer, ResumeOptions, SessionOptions, StorageChoice,
 };
