@@ -1,6 +1,6 @@
-# Testing Guide — GraphFlow Milestone 1
+# Testing Guide — GraphFlow Milestones 1–4
 
-Milestone 1 focuses on validating the new GraphFlow-based workflow (Researcher → Analyst → Critic). Use this guide to exercise the system and record verification steps.
+Milestones 1–4 cover the core GraphFlow workflow (Researcher → Analyst → Critic) plus the new hybrid retrieval layer backed by FastEmbed and Qdrant. Use this guide to exercise the system and record verification steps.
 
 ---
 
@@ -8,6 +8,7 @@ Milestone 1 focuses on validating the new GraphFlow-based workflow (Researcher �
 - Task behaviour implemented in `crates/deepresearch-core/src/tasks.rs`.
 - Workflow orchestration in `crates/deepresearch-core/src/workflow.rs`.
 - CLI execution path (`crates/deepresearch-cli/src/main.rs`).
+- Retrieval adapters (`crates/deepresearch-core/src/memory/`).
 
 ---
 
@@ -23,6 +24,7 @@ Milestone 1 focuses on validating the new GraphFlow-based workflow (Researcher �
 | Integration | End-to-end session assertion | `cargo test --offline -p deepresearch-core critic_verdict_is_non_empty` |
 | Branching Integration | Manual-review path triggers | `cargo test --offline -p deepresearch-core manual_review_branch_triggers` |
 | Resume Integration | Resume existing session returns summary | `cargo test --offline -p deepresearch-core resume_session_returns_summary` |
+| Retrieval Ingestion | Index docs into Qdrant | `cargo run --offline -F qdrant-retriever -p deepresearch-cli ingest --session demo --path ./docs --qdrant-url http://localhost:6333` |
 
 ---
 

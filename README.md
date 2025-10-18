@@ -1,6 +1,7 @@
-# DeepResearch (GraphFlow Edition)
+# DeepResearch
+DeepResearch is a Rust-based multi-agent system designed to autonomously gather, analyze, and synthesize information for complex business questions — with full traceability and explainability. It showcases advanced AI-native research orchestration and serves as a flagship demonstration of my consulting and engineering expertise.
 
-Minimal, graph-first implementation of the DeepResearch agent pipeline. All multi-agent orchestration is powered directly by [`graph_flow`](https://docs.rs/graph-flow/latest/graph_flow/).
+This repository contains a minimal, graph-first implementation of the DeepResearch agent pipeline, with all multi-agent orchestration powered directly by [`graph_flow`](https://docs.rs/graph-flow/latest/)
 
 ---
 
@@ -73,8 +74,9 @@ Postgres sessions require `DATABASE_URL` to point at the running container (see 
 | M0 — Graph Foundation | ✅ | Core Researcher → Analyst → Critic tasks wired via `graph_flow` |
 | M1 — Observability & Testing | ✅ | Structured tracing, integration test, documented context keys |
 | M2 — Branching & Extensibility | ✅ | Conditional manual-review branch, graph customiser, session options |
-| M3 — Persistence & Replay | 🚧 | Postgres session storage, resume APIs, docker-compose (see `PLAN.md`) |
-| M4+ | 🚧 | See `PLAN.md` for upcoming work (retrieval, fact-checking, explainability, etc.) |
+| M3 — Persistence & Replay | ✅ | Postgres session storage, resume APIs, docker-compose stack |
+| M4 — Memory & Retrieval | ✅ | FastEmbed + Qdrant hybrid retriever, CLI ingestion workflow |
+| M5+ | 🚧 | See `PLAN.md` for upcoming work (fact-checking, explainability, etc.) |
 
 Refer to `PLAN.md` for the full roadmap.
 
@@ -107,7 +109,12 @@ cargo run --offline -p deepresearch-cli resume --session <uuid>
 # Use Postgres-backed sessions (feature flag + DATABASE_URL)
 DATABASE_URL=postgres://deepresearch:deepresearch@localhost:5432/deepresearch \
   cargo run --offline -F postgres-session -p deepresearch-cli run --session $(uuidgen)
+
+# Ingest local documents into Qdrant
+cargo run --offline -F qdrant-retriever -p deepresearch-cli ingest --session <uuid> --path ./docs --qdrant-url http://localhost:6333
 ```
+
+> Requires `curl` available on PATH (used for REST calls to Qdrant).
 
 ---
 

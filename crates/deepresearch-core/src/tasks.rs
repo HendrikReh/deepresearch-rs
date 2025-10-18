@@ -2,7 +2,9 @@ use async_trait::async_trait;
 use graph_flow::{Context, NextAction, Task, TaskResult};
 use serde::{Deserialize, Serialize};
 use tokio::time::{sleep, Duration};
-use tracing::{debug, info, instrument};
+use tracing::{debug, info, instrument, warn};
+
+use crate::memory::{DynRetriever, RetrievedDocument};
 
 /// Utilities shared across tasks.
 fn default_sources() -> Vec<String> {
@@ -12,8 +14,44 @@ fn default_sources() -> Vec<String> {
     ]
 }
 
-#[derive(Default)]
-pub struct ResearchTask;
+pub struct ResearchTask {
+    retriever: DynRetriever,
+}
+
+impl ResearchTask {
+    pub fn new(retriever: DynRetriever) -> Self {
+        Self { retriever }
+    }
+
+    async fn run_retrieval(&self, session_id: &str, query: &str) -> Vec<RetrievedDocument> {
+        match self.retriever.retrieve(session_id, query, 5).await {
+            Ok(results) => {
+                if results
+                    .iter()
+                    .all(|doc| doc.score <= 0.0 || doc.text.trim().is_empty())
+                {
+                    vec![RetrievedDocument {
+                        text:
+                            "Automated placeholder insight. Additional manual review recommended."
+                                .to_string(),
+                        score: 0.1,
+                        source: Some("stub://memory".to_string()),
+                    }]
+                } else {
+                    results
+                }
+            }
+            Err(err) => {
+                warn!(%session_id, %query, error = %err, "retriever failed; using placeholder");
+                vec![RetrievedDocument {
+                    text: format!("Unable to query memory for '{query}'"),
+                    score: 0.0,
+                    source: Some("stub://error".to_string()),
+                }]
+            }
+        }
+    }
+}
 
 #[async_trait]
 impl Task for ResearchTask {
@@ -27,26 +65,30 @@ impl Task for ResearchTask {
             .get("query")
             .await
             .unwrap_or_else(|| "general market outlook".to_string());
+        let session_id: String = context
+            .get("session_id")
+            .await
+            .unwrap_or_else(|| "default-session".to_string());
 
-        // Simulate retrieval latency
+        info!(%query, %session_id, "researcher collecting findings");
+
+        // Simulate latency when external systems are slow
         sleep(Duration::from_millis(150)).await;
 
-        info!(%query, "researcher collecting findings");
+        let documents = self.run_retrieval(&session_id, &query).await;
 
-        let findings = vec![
-            format!("Identified three primary drivers impacting {}", query),
-            "Global demand continues to outpace supply in Q4 forecasts".to_string(),
-            "Capital expenditure is shifting toward sustainable extraction methods".to_string(),
-        ];
-
-        let sources = default_sources();
+        let findings: Vec<String> = documents.iter().map(|doc| doc.text.clone()).collect();
+        let sources: Vec<String> = documents
+            .iter()
+            .filter_map(|doc| doc.source.clone())
+            .collect();
 
         context.set("research.findings", &findings).await;
         context.set("research.sources", &sources).await;
 
         debug!(
             findings_count = findings.len(),
-            sources = ?sources,
+            sources_count = sources.len(),
             "research task populated context"
         );
 

@@ -1,3 +1,8 @@
+#[cfg(feature = "qdrant-retriever")]
+use crate::memory::qdrant::QdrantConfig;
+#[cfg(feature = "qdrant-retriever")]
+use crate::memory::HybridRetriever;
+use crate::memory::{DynRetriever, IngestDocument, StubRetriever};
 use crate::tasks::{AnalystTask, CriticTask, FinalizeTask, ManualReviewTask, ResearchTask};
 use anyhow::{anyhow, Result};
 use graph_flow::{
@@ -22,9 +27,9 @@ pub struct BaseGraphTasks {
 }
 
 impl BaseGraphTasks {
-    fn new() -> Self {
+    fn new(retriever: DynRetriever) -> Self {
         Self {
-            research: Arc::new(ResearchTask),
+            research: Arc::new(ResearchTask::new(retriever)),
             analyst: Arc::new(AnalystTask),
             critic: Arc::new(CriticTask),
             finalize: Arc::new(FinalizeTask),
@@ -35,6 +40,31 @@ impl BaseGraphTasks {
 
 /// Hook for callers to mutate the graph before default wiring occurs.
 pub type GraphCustomizer = dyn Fn(GraphBuilder, &BaseGraphTasks) -> GraphBuilder + Send + Sync;
+
+#[derive(Clone, Default)]
+pub enum RetrieverChoice {
+    #[default]
+    Stub,
+    Qdrant {
+        url: String,
+        collection: String,
+        concurrency_limit: usize,
+    },
+}
+
+impl RetrieverChoice {
+    pub fn qdrant(
+        url: impl Into<String>,
+        collection: impl Into<String>,
+        concurrency_limit: usize,
+    ) -> Self {
+        Self::Qdrant {
+            url: url.into(),
+            collection: collection.into(),
+            concurrency_limit,
+        }
+    }
+}
 
 #[derive(Clone, Default)]
 pub enum StorageChoice {
@@ -58,8 +88,11 @@ impl StorageChoice {
     }
 }
 
-fn build_graph(customizer: Option<&GraphCustomizer>) -> (Arc<graph_flow::Graph>, BaseGraphTasks) {
-    let tasks = BaseGraphTasks::new();
+fn build_graph(
+    customizer: Option<&GraphCustomizer>,
+    retriever: DynRetriever,
+) -> (Arc<graph_flow::Graph>, BaseGraphTasks) {
+    let tasks = BaseGraphTasks::new(retriever);
 
     let builder = GraphBuilder::new("deepresearch_workflow")
         .add_task(tasks.research.clone())
@@ -108,6 +141,35 @@ fn new_session_id() -> String {
     Uuid::new_v4().to_string()
 }
 
+async fn build_retriever(choice: &RetrieverChoice) -> Result<DynRetriever> {
+    match choice {
+        RetrieverChoice::Stub => Ok(Arc::new(StubRetriever::new())),
+        RetrieverChoice::Qdrant {
+            url,
+            collection,
+            concurrency_limit,
+        } => {
+            #[cfg(feature = "qdrant-retriever")]
+            {
+                let retriever = HybridRetriever::new(QdrantConfig {
+                    url: url.clone(),
+                    collection: collection.clone(),
+                    concurrency_limit: *concurrency_limit,
+                })
+                .await?;
+                Ok(Arc::new(retriever))
+            }
+            #[cfg(not(feature = "qdrant-retriever"))]
+            {
+                let _ = (url, collection, concurrency_limit);
+                Err(anyhow!(
+                    "qdrant retriever support not enabled; rebuild with `--features deepresearch-core/qdrant-retriever`"
+                ))
+            }
+        }
+    }
+}
+
 /// Options for running a new research session.
 pub struct SessionOptions<'a> {
     pub query: &'a str,
@@ -115,6 +177,7 @@ pub struct SessionOptions<'a> {
     pub customize_graph: Option<Box<GraphCustomizer>>,
     pub initial_context: Vec<(String, Value)>,
     pub storage: StorageChoice,
+    pub retriever: RetrieverChoice,
 }
 
 impl<'a> SessionOptions<'a> {
@@ -125,6 +188,7 @@ impl<'a> SessionOptions<'a> {
             customize_graph: None,
             initial_context: Vec::new(),
             storage: StorageChoice::InMemory,
+            retriever: RetrieverChoice::default(),
         }
     }
 
@@ -158,6 +222,21 @@ impl<'a> SessionOptions<'a> {
         self.storage = StorageChoice::postgres(database_url);
         self
     }
+
+    pub fn with_retriever(mut self, retriever: RetrieverChoice) -> Self {
+        self.retriever = retriever;
+        self
+    }
+
+    pub fn with_qdrant_retriever(
+        mut self,
+        url: impl Into<String>,
+        collection: impl Into<String>,
+        concurrency_limit: usize,
+    ) -> Self {
+        self.retriever = RetrieverChoice::qdrant(url, collection, concurrency_limit);
+        self
+    }
 }
 
 fn extract_final_summary(session: &Session) -> String {
@@ -174,7 +253,8 @@ pub async fn run_research_session(query: &str) -> Result<String> {
 
 /// Run the research workflow with custom options (session ID, storage, graph customisation, seeded context).
 pub async fn run_research_session_with_options(options: SessionOptions<'_>) -> Result<String> {
-    let (graph, tasks) = build_graph(options.customize_graph.as_deref());
+    let retriever = build_retriever(&options.retriever).await?;
+    let (graph, tasks) = build_graph(options.customize_graph.as_deref(), retriever);
     let storage = init_storage(&options.storage).await?;
     let runner = FlowRunner::new(graph, storage.clone());
 
@@ -185,6 +265,7 @@ pub async fn run_research_session_with_options(options: SessionOptions<'_>) -> R
         .context
         .set("query", options.query.to_string())
         .await;
+    session.context.set("session_id", session_id.clone()).await;
     for (key, value) in options.initial_context.iter() {
         session.context.set(key, value.clone()).await;
     }
@@ -229,6 +310,7 @@ pub struct ResumeOptions {
     pub session_id: String,
     pub customize_graph: Option<Box<GraphCustomizer>>,
     pub storage: StorageChoice,
+    pub retriever: RetrieverChoice,
 }
 
 impl ResumeOptions {
@@ -237,6 +319,7 @@ impl ResumeOptions {
             session_id: session_id.into(),
             customize_graph: None,
             storage: StorageChoice::InMemory,
+            retriever: RetrieverChoice::default(),
         }
     }
 
@@ -260,11 +343,27 @@ impl ResumeOptions {
         self.storage = StorageChoice::postgres(database_url);
         self
     }
+
+    pub fn with_retriever(mut self, retriever: RetrieverChoice) -> Self {
+        self.retriever = retriever;
+        self
+    }
+
+    pub fn with_qdrant_retriever(
+        mut self,
+        url: impl Into<String>,
+        collection: impl Into<String>,
+        concurrency_limit: usize,
+    ) -> Self {
+        self.retriever = RetrieverChoice::qdrant(url, collection, concurrency_limit);
+        self
+    }
 }
 
 /// Resume a previously started session and return the latest summary.
 pub async fn resume_research_session(options: ResumeOptions) -> Result<String> {
-    let (graph, _tasks) = build_graph(options.customize_graph.as_deref());
+    let retriever = build_retriever(&options.retriever).await?;
+    let (graph, _tasks) = build_graph(options.customize_graph.as_deref(), retriever);
     let storage = init_storage(&options.storage).await?;
     let runner = FlowRunner::new(graph, storage.clone());
 
@@ -275,4 +374,18 @@ pub async fn resume_research_session(options: ResumeOptions) -> Result<String> {
 
     let session = load_session(&storage, &options.session_id).await?;
     Ok(extract_final_summary(&session))
+}
+
+pub struct IngestOptions {
+    pub session_id: String,
+    pub documents: Vec<IngestDocument>,
+    pub retriever: RetrieverChoice,
+}
+
+pub async fn ingest_documents(options: IngestOptions) -> Result<()> {
+    let retriever = build_retriever(&options.retriever).await?;
+    retriever
+        .ingest(&options.session_id, options.documents)
+        .await?;
+    Ok(())
 }

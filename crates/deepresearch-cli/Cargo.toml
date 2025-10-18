@@ -6,6 +6,7 @@ edition = "2021"
 [features]
 default = []
 postgres-session = ["deepresearch-core/postgres-session"]
+qdrant-retriever = ["deepresearch-core/qdrant-retriever"]
 
 [dependencies]
 anyhow = { workspace = true }
@@ -14,3 +15,5 @@ deepresearch-core = { path = "../deepresearch-core" }
 tokio = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
+walkdir = { workspace = true }
+uuid = { workspace = true }

@@ -9,7 +9,7 @@ This repo hosts a fresh graph-first implementation of DeepResearch. All agent be
 - **Crates:**  
   - `deepresearch-core` — reusable tasks and workflow helpers.  
   - `deepresearch-cli` — demo binary that runs the default research session.
-- **Primary dependencies:** `graph-flow`, `tokio`, `anyhow`, `tracing`.
+- **Primary dependencies:** `graph-flow`, `tokio`, `anyhow`, `tracing`, `qdrant-client`, `fastembed`, `dashmap`.
 
 ---
 
@@ -79,6 +79,7 @@ let options = SessionOptions::new("Custom query").with_customizer(Box::new(move 
         .add_edge(base.finalize.id(), task.id())
 }));
 
+// Requires building with `--features deepresearch-core/qdrant-retriever`
 let summary = run_research_session_with_options(options).await?;
 ```
 
@@ -98,10 +99,46 @@ Add new tasks by implementing `graph_flow::Task` and registering them in `build_
 
 ---
 
+## Memory & Retrieval
+- Default stub retriever keeps everything in-memory (safe for tests).
+- Enable Qdrant + FastEmbed by wiring `SessionOptions::with_qdrant_retriever(url, collection, concurrency)` (and the matching `ResumeOptions`).
+- Documents are ingested via `ingest_documents` or the CLI (`deepresearch-cli ingest --session <id> --path <docs> --qdrant-url http://localhost:6333`).
+- `HybridRetriever` stores vectors in Qdrant (dense cosine similarity) and constrains load with a semaphore.
+
+```rust
+let summary = run_research_session_with_options(
+    SessionOptions::new(query)
+        .with_qdrant_retriever(
+            "http://localhost:6333",
+            "deepresearch",
+            8,
+        )
+        .with_session_id(session_id.clone()),
+).await?;
+
+// Ingest supporting material
+ingest_documents(IngestOptions {
+    session_id: session_id.clone(),
+    documents: vec![IngestDocument {
+        id: Uuid::new_v4().to_string(),
+        text: doc_text,
+        source: Some("notes/report.txt".into()),
+    }],
+    retriever: RetrieverChoice::qdrant(
+        "http://localhost:6333",
+        "deepresearch",
+        8,
+    ),
+}).await?;
+```
+
+---
+
 ## Extending the Pipeline
 - **Branching:** Use the customiser hook to insert tasks or additional conditional edges.  
 - **Parallelism:** Wrap child tasks with `graph_flow::FanOutTask` (see upstream examples) if you require concurrent retrieval.  
-- **Persistence:** Replace `InMemorySessionStorage` with the `PostgresSessionStorage` from the crate when durability is required.
+- **Persistence:** Replace `InMemorySessionStorage` with the `PostgresSessionStorage` from the crate when durability is required.  
+- **Ingestion:** Use `deepresearch-cli ingest --session <id> --path <docs> --qdrant-url http://localhost:6333` to index local files into Qdrant.
 
 Document any new context keys or task IDs in this file to keep downstream contributors aligned.
 

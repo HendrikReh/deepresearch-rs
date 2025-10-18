@@ -9,13 +9,17 @@ path = "src/lib.rs"
 [features]
 default = []
 postgres-session = []
+qdrant-retriever = ["dep:fastembed", "dep:qdrant-client"]
 
 [dependencies]
 anyhow = { workspace = true }
 async-trait = { workspace = true }
+dashmap = { workspace = true }
 graph-flow = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
 uuid = { workspace = true }
+fastembed = { workspace = true, optional = true }
+qdrant-client = { workspace = true, optional = true }

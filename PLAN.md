@@ -35,10 +35,10 @@ This plan tracks the new graph-first implementation. Update the checkboxes and a
 - [x] Implement helper to resume sessions and fetch latest `ExecutionResult`.
 - [x] Add CLI argument to resume from an existing session.
 
-### M4 — Memory & Retrieval Layer
-- [ ] Integrate Qdrant client with per-session namespaces and async backpressure limits.
-- [ ] Implement hybrid retrieval combining dense + sparse scores (FastEmbed or equivalent).
-- [ ] Add document ingestion command that indexes local files via CLI.
+### M4 — Memory & Retrieval Layer ✅
+- [x] Integrate Qdrant client with per-session namespaces and async backpressure limits (feature `qdrant-retriever`).
+- [x] Implement hybrid retrieval combining dense embedding + payload scoring (FastEmbed-backed).
+- [x] Add document ingestion command that indexes local files via CLI.
 
 ### M5 — Fact-Checking & Evaluation
 - [ ] Build configurable fact-check task honoring `min_confidence`, `verification_count`, `timeout_ms`.
