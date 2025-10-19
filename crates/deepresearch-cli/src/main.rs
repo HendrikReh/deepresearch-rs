@@ -1,7 +1,7 @@
 use anyhow::Result;
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use deepresearch_core::{
-    delete_session, load_session_report, resume_research_session_with_report,
+    delete_session, load_session_report, remove_session_logs, resume_research_session_with_report,
     run_research_session_with_report, DeleteOptions, EvaluationHarness, LoadOptions, ResumeOptions,
     SessionOptions, SessionOutcome,
 };
@@ -10,7 +10,7 @@ use deepresearch_core::{IngestDocument, IngestOptions, RetrieverChoice};
 use serde::Serialize;
 #[cfg(feature = "qdrant-retriever")]
 use std::path::Path;
-use std::{path::PathBuf, sync::Arc};
+use std::{fs, path::PathBuf, sync::Arc};
 use tokio::{runtime::Runtime, sync::Semaphore, task::JoinSet, time::Instant};
 use tracing::{info, warn};
 use tracing_subscriber::EnvFilter;
@@ -20,10 +20,6 @@ use uuid::Uuid;
 use anyhow::Context;
 #[cfg(feature = "qdrant-retriever")]
 use deepresearch_core::ingest_documents as ingest_docs;
-#[cfg(feature = "qdrant-retriever")]
-use std::fs;
-#[cfg(feature = "qdrant-retriever")]
-use uuid::Uuid;
 #[cfg(feature = "qdrant-retriever")]
 use walkdir::WalkDir;
 
@@ -769,11 +765,26 @@ async fn purge_command(args: PurgeArgs) -> Result<()> {
     let options = DeleteOptions::new(session_id.clone());
 
     let deleted = delete_session(options).await.is_ok();
+    if let Err(err) = remove_session_logs(&session_id) {
+        warn!(session = %session_id, error = %err, "failed to remove session logs");
+    }
+    purge_trace_file(&session_id);
     let response = PurgeResponse {
-        session_id,
+        session_id: session_id.clone(),
         deleted,
     };
     emit_output(args.format, &response)
+}
+
+fn purge_trace_file(session_id: &str) {
+    let trace_dir =
+        std::env::var("DEEPRESEARCH_TRACE_DIR").unwrap_or_else(|_| "data/traces".to_string());
+    let trace_path = PathBuf::from(trace_dir).join(format!("{session_id}.json"));
+    if trace_path.exists() {
+        if let Err(err) = fs::remove_file(&trace_path) {
+            warn!(session = %session_id, error = %err, "failed to remove trace file");
+        }
+    }
 }
 
 struct BenchResult {
@@ -793,6 +804,11 @@ async fn bench_command(args: BenchArgs) -> Result<()> {
     let mut tasks = JoinSet::new();
     let base_session = format!("bench-{}", Uuid::new_v4());
     let overall_start = Instant::now();
+
+    #[cfg(not(feature = "qdrant-retriever"))]
+    if args.qdrant_url.is_some() {
+        warn!("qdrant retriever feature not enabled; falling back to stub retrieval during bench");
+    }
 
     for idx in 0..args.sessions {
         let prompt = args.prompt.clone();

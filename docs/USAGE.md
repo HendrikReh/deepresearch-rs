@@ -251,3 +251,14 @@ rm -rf .fastembed_cache
 ```
 
 With the retrieval layer active, the Researcher task will pull real documents from Qdrant, and the critic summary will enumerate the ingested sources. Refer back to `docs/TESTING_GUIDE.md` for verification steps and `AGENTS.md` for deeper architectural context.
+
+---
+
+## 10. Logging & Retention
+
+- Session completions append redacted JSON lines to `data/logs/<year>/<month>/session.jsonl`; high-risk tokens (`api_key=…`, `bearer …`, `sk-…`) are replaced with `[REDACTED]` and mirrored into `audit.jsonl` for compliance reviews.
+- Configure the log root and retention policy via environment variables:
+  - `DEEPRESEARCH_LOG_DIR` (default `data/logs`).
+  - `DEEPRESEARCH_LOG_RETENTION_DAYS` (default `90`; set to `0` to disable automated pruning).
+- `deepresearch-cli purge` now removes the session ledger (logs + traces) alongside storage state so data deletion requests stay compliant.
+- Run `deepresearch-cli bench …` while watching `GET /health` to tune `DEEPRESEARCH_MAX_CONCURRENT_SESSIONS` before 429 throttling kicks in.

@@ -54,24 +54,27 @@ This plan tracks the new graph-first implementation. Update the checkboxes and a
 - [x] Flesh out CLI commands (`query`, `ingest`, `eval`, `explain`, `resume`, `purge`) with structured output.
 - [x] Build Axum API server exposing `POST /query`, `GET /session/:id`, `POST /ingest`.
 - [x] Enforce capacity limits (HTTP 429) and include explainability toggles in responses.
+- _2025-10-21:_ Added `/health` capacity reporting endpoint and CLI `bench` load tester to support tuning `DEEPRESEARCH_MAX_CONCURRENT_SESSIONS`.
 
-### M8 — Security, Privacy & Logging
-- [ ] Enforce env-only secrets, session purge, and data retention policies.
-- [ ] Implement JSON logging pipeline with rotation (`data/logs/<year>/<month>/session.jsonl`) and redaction.
-- [ ] Add audit logging when PII or secrets are stripped; document compliance posture.
+### M8 — Security, Privacy & Logging ✅
+- [x] Enforce env-only secrets, session purge, and data retention policies.
+- [x] Implement JSON logging pipeline with rotation (`data/logs/<year>/<month>/session.jsonl`) and redaction.
+- [x] Add audit logging when PII or secrets are stripped; document compliance posture.
+- _2025-10-19:_ Added automatic log retention pruning, CLI purge log cleanup, and audit trails for redacted secrets.
 
 ### M9 — Performance & Release Gates
 - [ ] Instrument spans for each task; capture latency metrics (median ≤150s, P95 ≤240s).
 - [ ] Add concurrency/backpressure tests ensuring semaphore/session caps hold under load.
 - [ ] Validate release criteria from PRD (≥80% fact verification, CLI/API stability, docs updated).
 - [ ] Prepare release checklist, tagging, and README/PRD alignment.
+- [x] Provide CLI benchmarking utility (`bench`) for throughput tuning and latency measurement experiments.
 
 ---
 
 ## Cross-Cutting Tasks
 - [ ] Establish testing harness (`cargo test --offline`) and add CI instructions.
 - [ ] Maintain `AGENTS.md` when adding/removing context keys or tasks.
-- [ ] Keep `docs/TESTING_GUIDE.md` aligned with the active milestone.
+- [x] Keep `docs/TESTING_GUIDE.md` aligned with the active milestone.
 
 ---
 

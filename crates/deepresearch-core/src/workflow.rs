@@ -1,9 +1,10 @@
+use crate::logging::{log_session_completion, SessionLogInput};
 #[cfg(feature = "qdrant-retriever")]
 use crate::memory::qdrant::{HybridRetriever, QdrantConfig};
 use crate::memory::{DynRetriever, IngestDocument, StubRetriever};
 use crate::tasks::{
-    AnalystTask, CriticTask, FactCheckSettings, FactCheckTask, FinalizeTask, ManualReviewTask,
-    ResearchTask,
+    AnalystOutput, AnalystTask, CriticTask, FactCheckSettings, FactCheckTask, FinalizeTask,
+    ManualReviewTask, ResearchTask,
 };
 use crate::trace::{persist_trace, TraceCollector, TraceEvent, TraceSummary};
 use anyhow::{anyhow, Result};
@@ -114,6 +115,31 @@ fn build_outcome(
             Ok(path) => trace_path = Some(path),
             Err(err) => warn!(%session_id, error = %err, "failed to persist trace to disk"),
         }
+    }
+
+    let trace_path_str = trace_path.as_ref().map(|path| path.display().to_string());
+    let query = session.context.get_sync::<String>("query");
+    let verdict = session.context.get_sync::<String>("critique.verdict");
+    let requires_manual = session
+        .context
+        .get_sync::<bool>("final.requires_manual")
+        .unwrap_or(false);
+    let sources = session
+        .context
+        .get_sync::<AnalystOutput>("analysis.output")
+        .unwrap_or_default()
+        .sources;
+
+    if let Err(err) = log_session_completion(SessionLogInput {
+        session_id: session_id.to_string(),
+        query,
+        summary: summary.clone(),
+        verdict,
+        requires_manual,
+        sources,
+        trace_path: trace_path_str.clone(),
+    }) {
+        warn!(%session_id, error = %err, "failed to record session log");
     }
 
     Ok(SessionOutcome {
