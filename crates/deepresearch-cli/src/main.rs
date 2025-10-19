@@ -1,9 +1,15 @@
 use anyhow::Result;
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use deepresearch_core::{
-    resume_research_session, resume_research_session_with_report, run_research_session_with_report,
-    ResumeOptions, SessionOptions, SessionOutcome,
+    delete_session, load_session_report, resume_research_session_with_report,
+    run_research_session_with_report, DeleteOptions, EvaluationHarness, LoadOptions, ResumeOptions,
+    SessionOptions, SessionOutcome,
 };
+#[cfg(feature = "qdrant-retriever")]
+use deepresearch_core::{IngestDocument, IngestOptions, RetrieverChoice};
+use serde::Serialize;
+#[cfg(feature = "qdrant-retriever")]
+use std::path::Path;
 use std::path::PathBuf;
 use tokio::runtime::Runtime;
 use tracing::{info, warn};
@@ -12,13 +18,9 @@ use tracing_subscriber::EnvFilter;
 #[cfg(feature = "qdrant-retriever")]
 use anyhow::Context;
 #[cfg(feature = "qdrant-retriever")]
-use deepresearch_core::{
-    ingest_documents as ingest_docs, IngestDocument, IngestOptions, RetrieverChoice,
-};
+use deepresearch_core::ingest_documents as ingest_docs;
 #[cfg(feature = "qdrant-retriever")]
 use std::fs;
-#[cfg(feature = "qdrant-retriever")]
-use std::path::Path;
 #[cfg(feature = "qdrant-retriever")]
 use uuid::Uuid;
 #[cfg(feature = "qdrant-retriever")]
@@ -28,7 +30,7 @@ use walkdir::WalkDir;
 #[command(
     name = "deepresearch-cli",
     version,
-    about = "DeepResearch GraphFlow demo"
+    about = "DeepResearch GraphFlow interface"
 )]
 struct Cli {
     #[command(subcommand)]
@@ -37,21 +39,184 @@ struct Cli {
 
 #[derive(Subcommand, Debug)]
 enum Command {
-    /// Run a research session from scratch.
-    Run(RunArgs),
-    /// Resume a previously created session.
+    /// Run a fresh research session.
+    Query(QueryArgs),
+    /// Resume an existing workflow.
     Resume(ResumeArgs),
-    /// Ingest local documents into the retrieval store.
+    /// Render the stored trace for a session.
+    Explain(ExplainArgs),
+    /// Ingest local documents into the retrieval layer.
     Ingest(IngestArgs),
+    /// Aggregate evaluation metrics from a JSONL log.
+    Eval(EvalArgs),
+    /// Delete a session from the configured storage backend.
+    Purge(PurgeArgs),
+}
+
+#[derive(Copy, Clone, Debug, ValueEnum, Default)]
+enum OutputFormat {
+    #[default]
+    Text,
+    Json,
+}
+
+#[derive(Copy, Clone, Debug, ValueEnum)]
+enum ExplainFormat {
+    Markdown,
+    Mermaid,
+    Graphviz,
+}
+
+impl ExplainFormat {
+    fn render(self, outcome: &SessionOutcome) -> Option<String> {
+        match self {
+            ExplainFormat::Markdown => outcome.explain_markdown(),
+            ExplainFormat::Mermaid => outcome.explain_mermaid(),
+            ExplainFormat::Graphviz => outcome.explain_graphviz(),
+        }
+    }
+
+    fn label(self) -> &'static str {
+        match self {
+            ExplainFormat::Markdown => "markdown",
+            ExplainFormat::Mermaid => "mermaid",
+            ExplainFormat::Graphviz => "graphviz",
+        }
+    }
+}
+
+trait RenderText {
+    fn render_text(&self) -> String;
+}
+
+#[derive(Serialize)]
+struct SessionResponse {
+    action: &'static str,
+    session_id: String,
+    summary: Option<String>,
+    trace_path: Option<String>,
+    explanation: Option<String>,
+    explanation_format: Option<String>,
+}
+
+impl RenderText for SessionResponse {
+    fn render_text(&self) -> String {
+        let mut sections = vec![
+            format!("action: {}", self.action),
+            format!("session: {}", self.session_id),
+        ];
+
+        if let Some(summary) = &self.summary {
+            sections.push(format!("summary:\n{}", summary));
+        }
+
+        if let Some(explanation) = &self.explanation {
+            let label = self.explanation_format.as_deref().unwrap_or("markdown");
+            let mut block = String::new();
+            if let Some(fence) = self
+                .explanation_format
+                .as_deref()
+                .and_then(|fmt| match fmt {
+                    "mermaid" => Some("```mermaid\n"),
+                    "graphviz" => Some("```dot\n"),
+                    _ => None,
+                })
+            {
+                block.push_str(fence);
+                block.push_str(explanation);
+                if !explanation.ends_with('\n') {
+                    block.push('\n');
+                }
+                block.push_str("```");
+            } else {
+                block.push_str(explanation);
+            }
+            sections.push(format!("explanation ({label}):\n{block}"));
+        }
+
+        if let Some(path) = &self.trace_path {
+            sections.push(format!("trace: {}", path));
+        }
+
+        sections.join("\n\n")
+    }
+}
+
+#[derive(Serialize)]
+struct EvalResponse {
+    total_sessions: usize,
+    evaluated_sessions: usize,
+    average_confidence: f32,
+    failures: Vec<String>,
+    summary: String,
+}
+
+impl RenderText for EvalResponse {
+    fn render_text(&self) -> String {
+        let mut lines = vec![self.summary.clone()];
+        if !self.failures.is_empty() {
+            lines.push(format!("failing sessions: {}", self.failures.join(", ")));
+        }
+        lines.join("\n")
+    }
+}
+
+#[cfg(feature = "qdrant-retriever")]
+#[derive(Serialize)]
+struct IngestResponse {
+    session_id: String,
+    documents_indexed: usize,
+}
+
+#[cfg(feature = "qdrant-retriever")]
+impl RenderText for IngestResponse {
+    fn render_text(&self) -> String {
+        format!(
+            "ingested {count} document(s) into session {id}",
+            count = self.documents_indexed,
+            id = self.session_id
+        )
+    }
+}
+
+#[derive(Serialize)]
+struct PurgeResponse {
+    session_id: String,
+    deleted: bool,
+}
+
+impl RenderText for PurgeResponse {
+    fn render_text(&self) -> String {
+        if self.deleted {
+            format!("session {} purged", self.session_id)
+        } else {
+            format!("session {} not found", self.session_id)
+        }
+    }
+}
+
+fn emit_output<T>(format: OutputFormat, payload: &T) -> Result<()>
+where
+    T: RenderText + Serialize,
+{
+    match format {
+        OutputFormat::Text => {
+            println!("{}", payload.render_text());
+        }
+        OutputFormat::Json => {
+            println!("{}", serde_json::to_string_pretty(payload)?);
+        }
+    }
+    Ok(())
 }
 
 #[derive(Args, Debug)]
-struct RunArgs {
-    /// Query to research.
-    #[arg(long, default_value = "Assess lithium battery market drivers 2024")]
-    query: String,
+struct QueryArgs {
+    /// Natural-language prompt to research.
+    #[arg(value_name = "PROMPT")]
+    prompt: String,
 
-    /// Optional session ID (UUID recommended when using Postgres storage).
+    /// Optional session ID.
     #[arg(long)]
     session: Option<String>,
 
@@ -67,19 +232,27 @@ struct RunArgs {
     #[arg(long, default_value_t = 8)]
     qdrant_concurrency: usize,
 
-    /// Emit trace output alongside the session summary.
+    /// Persist trace events to disk even when not printing explanations.
     #[arg(long)]
-    explain: bool,
-
-    /// Output format used when `--explain` is provided.
-    #[arg(long, value_enum, default_value_t = ExplainFormat::Markdown)]
-    explain_format: ExplainFormat,
+    persist_trace: bool,
 
     /// Directory to persist `trace.json` (defaults to `data/traces`).
     #[arg(long)]
     trace_dir: Option<PathBuf>,
 
-    /// Use Postgres-backed session storage (falls back to in-memory if omitted).
+    /// Include a reasoning trace in the response.
+    #[arg(long)]
+    explain: bool,
+
+    /// Rendering format for the reasoning trace.
+    #[arg(long, value_enum, default_value_t = ExplainFormat::Markdown)]
+    explain_format: ExplainFormat,
+
+    /// Output format (text or JSON).
+    #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
+    format: OutputFormat,
+
+    /// Use Postgres-backed session storage.
     #[cfg(feature = "postgres-session")]
     #[arg(long, env = "DATABASE_URL")]
     database_url: Option<String>,
@@ -87,8 +260,8 @@ struct RunArgs {
 
 #[derive(Args, Debug)]
 struct ResumeArgs {
-    /// Session ID to resume (must exist in storage).
-    #[arg(long)]
+    /// Session ID to resume.
+    #[arg(value_name = "SESSION_ID")]
     session: String,
 
     /// Optional Qdrant endpoint to enable hybrid retrieval.
@@ -103,19 +276,59 @@ struct ResumeArgs {
     #[arg(long, default_value_t = 8)]
     qdrant_concurrency: usize,
 
-    /// Emit trace output alongside the session summary when resuming.
+    /// Persist trace events to disk even when not printing explanations.
     #[arg(long)]
-    explain: bool,
+    persist_trace: bool,
 
-    /// Output format used when `--explain` is provided.
-    #[arg(long, value_enum, default_value_t = ExplainFormat::Markdown)]
-    explain_format: ExplainFormat,
-
-    /// Directory to persist `trace.json` (defaults to `data/traces`).
+    /// Directory to persist `trace.json`.
     #[arg(long)]
     trace_dir: Option<PathBuf>,
 
-    /// Use Postgres-backed session storage (falls back to in-memory if omitted).
+    /// Include a reasoning trace in the response.
+    #[arg(long)]
+    explain: bool,
+
+    /// Rendering format for the reasoning trace.
+    #[arg(long, value_enum, default_value_t = ExplainFormat::Markdown)]
+    explain_format: ExplainFormat,
+
+    /// Output format (text or JSON).
+    #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
+    format: OutputFormat,
+
+    /// Use Postgres-backed session storage.
+    #[cfg(feature = "postgres-session")]
+    #[arg(long, env = "DATABASE_URL")]
+    database_url: Option<String>,
+}
+
+#[derive(Args, Debug)]
+struct ExplainArgs {
+    /// Session ID to explain.
+    #[arg(value_name = "SESSION_ID")]
+    session: String,
+
+    /// Directory to persist `trace.json` when available.
+    #[arg(long)]
+    trace_dir: Option<PathBuf>,
+
+    /// Persist trace even if the session already has one.
+    #[arg(long)]
+    persist_trace: bool,
+
+    /// Include the final summary in the output.
+    #[arg(long)]
+    include_summary: bool,
+
+    /// Rendering format for the reasoning trace.
+    #[arg(long, value_enum, default_value_t = ExplainFormat::Markdown)]
+    explain_format: ExplainFormat,
+
+    /// Output format (text or JSON).
+    #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
+    format: OutputFormat,
+
+    /// Use Postgres-backed session storage.
     #[cfg(feature = "postgres-session")]
     #[arg(long, env = "DATABASE_URL")]
     database_url: Option<String>,
@@ -146,31 +359,37 @@ struct IngestArgs {
     /// Maximum concurrent Qdrant operations.
     #[arg(long, default_value_t = 8)]
     qdrant_concurrency: usize,
+
+    /// Output format (text or JSON).
+    #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
+    format: OutputFormat,
 }
 
-#[derive(Copy, Clone, Debug, ValueEnum)]
-enum ExplainFormat {
-    Markdown,
-    Mermaid,
-    Graphviz,
+#[derive(Args, Debug)]
+struct EvalArgs {
+    /// Path to the JSONL evaluation log.
+    #[arg(value_name = "LOG_PATH")]
+    path: PathBuf,
+
+    /// Output format (text or JSON).
+    #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
+    format: OutputFormat,
 }
 
-impl ExplainFormat {
-    fn render(self, outcome: &SessionOutcome) -> Option<String> {
-        match self {
-            ExplainFormat::Markdown => outcome.explain_markdown(),
-            ExplainFormat::Mermaid => outcome.explain_mermaid(),
-            ExplainFormat::Graphviz => outcome.explain_graphviz(),
-        }
-    }
+#[derive(Args, Debug)]
+struct PurgeArgs {
+    /// Session ID to delete.
+    #[arg(value_name = "SESSION_ID")]
+    session: String,
 
-    fn fence(self) -> Option<&'static str> {
-        match self {
-            ExplainFormat::Markdown => None,
-            ExplainFormat::Mermaid => Some("mermaid"),
-            ExplainFormat::Graphviz => Some("dot"),
-        }
-    }
+    /// Output format (text or JSON).
+    #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
+    format: OutputFormat,
+
+    /// Use Postgres-backed session storage.
+    #[cfg(feature = "postgres-session")]
+    #[arg(long, env = "DATABASE_URL")]
+    database_url: Option<String>,
 }
 
 fn main() -> Result<()> {
@@ -187,9 +406,12 @@ fn main() -> Result<()> {
     let rt = Runtime::new()?;
     rt.block_on(async move {
         match cli.command {
-            Command::Run(args) => run_command(args).await?,
+            Command::Query(args) => query_command(args).await?,
             Command::Resume(args) => resume_command(args).await?,
+            Command::Explain(args) => explain_command(args).await?,
             Command::Ingest(args) => ingest_command(args).await?,
+            Command::Eval(args) => eval_command(args).await?,
+            Command::Purge(args) => purge_command(args).await?,
         }
         Ok::<(), anyhow::Error>(())
     })?;
@@ -197,10 +419,10 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-async fn run_command(args: RunArgs) -> Result<()> {
-    info!(query = %args.query, "starting DeepResearch session");
+async fn query_command(args: QueryArgs) -> Result<()> {
+    info!(prompt = %args.prompt, "starting DeepResearch session");
 
-    let mut options = SessionOptions::new(&args.query);
+    let mut options = SessionOptions::new(&args.prompt);
 
     if let Some(session_id) = args.session.as_deref() {
         options = options.with_session_id(session_id);
@@ -224,44 +446,39 @@ async fn run_command(args: RunArgs) -> Result<()> {
         );
     }
 
-    let trace_requested = args.explain || args.trace_dir.is_some();
-    if let Some(dir) = args.trace_dir.as_ref() {
-        options = options.with_trace_output_dir(dir.clone());
-    } else if trace_requested {
-        options = options.enable_trace();
+    if args.explain || args.persist_trace || args.trace_dir.is_some() {
+        if let Some(dir) = args.trace_dir.as_ref() {
+            options = options.with_trace_output_dir(dir.clone());
+        } else {
+            options = options.enable_trace();
+        }
     }
 
     let outcome = run_research_session_with_report(options).await?;
-    println!("{}", outcome.summary);
-
-    if args.explain {
+    let (explanation, explanation_format) = if args.explain {
         match args.explain_format.render(&outcome) {
-            Some(rendered) => {
-                println!();
-                if let Some(fence) = args.explain_format.fence() {
-                    println!("```{}", fence);
-                    println!("{}", rendered);
-                    println!("```");
-                } else {
-                    println!("{}", rendered);
-                }
-            }
-            None => {
-                println!();
-                println!("(no trace events captured)");
-            }
+            Some(text) => (Some(text), Some(args.explain_format.label().to_string())),
+            None => (None, None),
         }
-    }
+    } else {
+        (None, None)
+    };
 
-    if trace_requested {
-        println!();
-        match outcome.trace_path {
-            Some(ref path) => println!("Trace saved to {}", path.display()),
-            None => println!("Trace not generated (no events captured)."),
-        }
-    }
+    let trace_path = outcome
+        .trace_path
+        .as_ref()
+        .map(|path| path.display().to_string());
 
-    Ok(())
+    let response = SessionResponse {
+        action: "query",
+        session_id: outcome.session_id,
+        summary: Some(outcome.summary),
+        trace_path,
+        explanation,
+        explanation_format,
+    };
+
+    emit_output(args.format, &response)
 }
 
 async fn resume_command(args: ResumeArgs) -> Result<()> {
@@ -287,47 +504,88 @@ async fn resume_command(args: ResumeArgs) -> Result<()> {
         );
     }
 
-    let trace_requested = args.explain || args.trace_dir.is_some();
-
-    if trace_requested {
+    if args.explain || args.persist_trace || args.trace_dir.is_some() {
         if let Some(dir) = args.trace_dir.as_ref() {
             options = options.with_trace_output_dir(dir.clone());
         } else {
             options = options.enable_trace();
         }
-
-        let outcome = resume_research_session_with_report(options).await?;
-        println!("{}", outcome.summary);
-
-        match args.explain_format.render(&outcome) {
-            Some(rendered) if args.explain => {
-                println!();
-                if let Some(fence) = args.explain_format.fence() {
-                    println!("```{}", fence);
-                    println!("{}", rendered);
-                    println!("```");
-                } else {
-                    println!("{}", rendered);
-                }
-            }
-            None if args.explain => {
-                println!();
-                println!("(no trace events captured)");
-            }
-            _ => {}
-        }
-
-        println!();
-        match outcome.trace_path {
-            Some(ref path) => println!("Trace saved to {}", path.display()),
-            None => println!("Trace not generated (no events captured)."),
-        }
-    } else {
-        let summary = resume_research_session(options).await?;
-        println!("{}", summary);
     }
 
-    Ok(())
+    let outcome = resume_research_session_with_report(options).await?;
+
+    let (explanation, explanation_format) = if args.explain {
+        match args.explain_format.render(&outcome) {
+            Some(text) => (Some(text), Some(args.explain_format.label().to_string())),
+            None => (None, None),
+        }
+    } else {
+        (None, None)
+    };
+
+    let trace_path = outcome
+        .trace_path
+        .as_ref()
+        .map(|path| path.display().to_string());
+
+    let response = SessionResponse {
+        action: "resume",
+        session_id: outcome.session_id,
+        summary: Some(outcome.summary),
+        trace_path,
+        explanation,
+        explanation_format,
+    };
+
+    emit_output(args.format, &response)
+}
+
+async fn explain_command(args: ExplainArgs) -> Result<()> {
+    info!(session = %args.session, "rendering DeepResearch trace");
+
+    let mut options = LoadOptions::new(args.session.clone());
+
+    #[cfg(feature = "postgres-session")]
+    if let Some(ref url) = args.database_url {
+        options = options.with_postgres_storage(url.clone());
+    }
+
+    if args.persist_trace || args.trace_dir.is_some() {
+        if let Some(dir) = args.trace_dir.as_ref() {
+            options = options.with_trace_output_dir(dir.clone());
+        } else {
+            options = options.with_trace_output_dir(PathBuf::from("data/traces"));
+        }
+    }
+
+    let outcome = load_session_report(options).await?;
+
+    let explanation = args.explain_format.render(&outcome);
+    let explanation_format = explanation
+        .as_ref()
+        .map(|_| args.explain_format.label().to_string());
+
+    let trace_path = outcome
+        .trace_path
+        .as_ref()
+        .map(|path| path.display().to_string());
+
+    let summary = if args.include_summary {
+        Some(outcome.summary)
+    } else {
+        None
+    };
+
+    let response = SessionResponse {
+        action: "explain",
+        session_id: outcome.session_id,
+        summary,
+        trace_path,
+        explanation,
+        explanation_format,
+    };
+
+    emit_output(args.format, &response)
 }
 
 #[cfg(feature = "qdrant-retriever")]
@@ -342,12 +600,21 @@ async fn ingest_command(args: IngestArgs) -> Result<()> {
 
     let documents = collect_documents(&args.path, args.recursive)?;
     if documents.is_empty() {
-        info!(path = %args.path.display(), "no documents matched ingestion criteria");
+        info!(
+            path = %args.path.display(),
+            "no documents matched ingestion criteria"
+        );
+        let response = IngestResponse {
+            session_id: args.session,
+            documents_indexed: 0,
+        };
+        emit_output(args.format, &response)?;
         return Ok(());
     }
+    let count = documents.len();
 
     let options = IngestOptions {
-        session_id: args.session,
+        session_id: args.session.clone(),
         documents,
         retriever: RetrieverChoice::qdrant(
             qdrant_url,
@@ -357,16 +624,57 @@ async fn ingest_command(args: IngestArgs) -> Result<()> {
     };
 
     ingest_docs(options).await?;
-    info!("ingestion complete");
-    Ok(())
+
+    let response = IngestResponse {
+        session_id: args.session,
+        documents_indexed: count,
+    };
+    emit_output(args.format, &response)
 }
 
 #[cfg(not(feature = "qdrant-retriever"))]
-async fn ingest_command(_args: IngestArgs) -> Result<()> {
+async fn ingest_command(args: IngestArgs) -> Result<()> {
+    let _ = args;
     warn!(
         "qdrant retriever feature not enabled; ingestion requires building with `--features deepresearch-cli/qdrant-retriever`"
     );
     Ok(())
+}
+
+async fn eval_command(args: EvalArgs) -> Result<()> {
+    let metrics = EvaluationHarness::analyze_log(&args.path)?;
+    let response = EvalResponse {
+        total_sessions: metrics.total_sessions,
+        evaluated_sessions: metrics.evaluated_sessions,
+        average_confidence: metrics.average_confidence,
+        failures: metrics.failures.clone(),
+        summary: metrics.summary(),
+    };
+    emit_output(args.format, &response)
+}
+
+async fn purge_command(args: PurgeArgs) -> Result<()> {
+    let session_id = args.session.clone();
+
+    #[cfg(feature = "postgres-session")]
+    let options = {
+        let base = DeleteOptions::new(session_id.clone());
+        if let Some(ref url) = args.database_url {
+            base.with_postgres_storage(url.clone())
+        } else {
+            base
+        }
+    };
+
+    #[cfg(not(feature = "postgres-session"))]
+    let options = DeleteOptions::new(session_id.clone());
+
+    let deleted = delete_session(options).await.is_ok();
+    let response = PurgeResponse {
+        session_id,
+        deleted,
+    };
+    emit_output(args.format, &response)
 }
 
 #[cfg(feature = "qdrant-retriever")]

@@ -516,6 +516,73 @@ impl ResumeOptions {
     }
 }
 
+pub struct LoadOptions {
+    pub session_id: String,
+    pub storage: StorageChoice,
+    pub trace_output_dir: Option<PathBuf>,
+}
+
+impl LoadOptions {
+    pub fn new(session_id: impl Into<String>) -> Self {
+        Self {
+            session_id: session_id.into(),
+            storage: StorageChoice::InMemory,
+            trace_output_dir: None,
+        }
+    }
+
+    pub fn with_storage(mut self, storage: StorageChoice) -> Self {
+        self.storage = storage;
+        self
+    }
+
+    pub fn with_shared_storage(mut self, storage: Arc<dyn SessionStorage>) -> Self {
+        self.storage = StorageChoice::Custom { storage };
+        self
+    }
+
+    #[cfg(feature = "postgres-session")]
+    pub fn with_postgres_storage(mut self, database_url: impl Into<String>) -> Self {
+        self.storage = StorageChoice::postgres(database_url);
+        self
+    }
+
+    pub fn with_trace_output_dir(mut self, dir: impl Into<PathBuf>) -> Self {
+        self.trace_output_dir = Some(dir.into());
+        self
+    }
+}
+
+pub struct DeleteOptions {
+    pub session_id: String,
+    pub storage: StorageChoice,
+}
+
+impl DeleteOptions {
+    pub fn new(session_id: impl Into<String>) -> Self {
+        Self {
+            session_id: session_id.into(),
+            storage: StorageChoice::InMemory,
+        }
+    }
+
+    pub fn with_storage(mut self, storage: StorageChoice) -> Self {
+        self.storage = storage;
+        self
+    }
+
+    pub fn with_shared_storage(mut self, storage: Arc<dyn SessionStorage>) -> Self {
+        self.storage = StorageChoice::Custom { storage };
+        self
+    }
+
+    #[cfg(feature = "postgres-session")]
+    pub fn with_postgres_storage(mut self, database_url: impl Into<String>) -> Self {
+        self.storage = StorageChoice::postgres(database_url);
+        self
+    }
+}
+
 /// Resume a previously started session and return a detailed outcome.
 pub async fn resume_research_session_with_report(options: ResumeOptions) -> Result<SessionOutcome> {
     let retriever = build_retriever(&options.retriever).await?;
@@ -565,6 +632,34 @@ pub async fn resume_research_session(options: ResumeOptions) -> Result<String> {
     resume_research_session_with_report(options)
         .await
         .map(|outcome| outcome.summary)
+}
+
+pub async fn load_session_report(options: LoadOptions) -> Result<SessionOutcome> {
+    let storage = init_storage(&options.storage).await?;
+    let session = load_session(&storage, &options.session_id).await?;
+    build_outcome(
+        &session,
+        &options.session_id,
+        options.trace_output_dir.as_ref(),
+    )
+}
+
+pub async fn delete_session(options: DeleteOptions) -> Result<()> {
+    let storage = init_storage(&options.storage).await?;
+    let session = storage
+        .get(&options.session_id)
+        .await
+        .map_err(|err| anyhow!("failed to load session '{}': {err}", options.session_id))?;
+
+    if session.is_none() {
+        return Err(anyhow!("session '{}' not found", options.session_id));
+    }
+
+    storage
+        .delete(&options.session_id)
+        .await
+        .map_err(|err| anyhow!("failed to delete session '{}': {err}", options.session_id))?;
+    Ok(())
 }
 
 pub struct IngestOptions {

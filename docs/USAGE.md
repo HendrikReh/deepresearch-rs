@@ -46,18 +46,30 @@ Shutdown when finished with `docker-compose down`.
 cargo fmt
 cargo clippy --workspace --all-targets -- -D warnings
 
-# Run the default workflow (in-memory sessions)
-cargo run --offline -p deepresearch-cli run --query "Compare EV supply chains"
+# Run a new research session (text output)
+cargo run --offline -p deepresearch-cli query "Compare EV supply chains"
+
+# Run with JSON output and an embedded mermaid trace
+cargo run --offline -p deepresearch-cli query "Where are sodium-ion deployments accelerating?" \
+  --format json \
+  --explain \
+  --explain-format mermaid
 
 # Resume an existing session
-cargo run --offline -p deepresearch-cli resume --session <uuid>
+cargo run --offline -p deepresearch-cli resume <SESSION_ID>
 
-# Use Postgres-backed storage (requires docker-compose stack)
+# Render the stored trace without re-running tasks
+cargo run --offline -p deepresearch-cli explain <SESSION_ID> --include-summary
+
+# Aggregate evaluation metrics from a JSONL log
+cargo run --offline -p deepresearch-cli eval data/logs/demo.jsonl --format json
+
+# Purge a session from Postgres storage (requires the docker-compose stack)
 DATABASE_URL=postgres://deepresearch:deepresearch@localhost:5432/deepresearch \
-  cargo run --offline -F postgres-session -p deepresearch-cli run --session $(uuidgen)
+  cargo run --offline -F postgres-session -p deepresearch-cli purge <SESSION_ID>
 ```
 
-The CLI prints the critic verdict, analyst summary, key insight, and enumerated sources.
+Every command supports `--format text|json`; text mode prints a human-readable summary, while JSON mode returns a structured payload (`session_id`, `summary`, `trace_path`, and any explanation block).
 
 ### Explainability Output (`--explain`)
 
@@ -65,17 +77,20 @@ Use the built-in explainability flags to capture task-level traces and render re
 
 ```bash
 # Markdown summary (default)
-cargo run --offline -p deepresearch-cli run --explain --query "How are sodium-ion batteries tracking?"
+cargo run --offline -p deepresearch-cli query "How are sodium-ion batteries tracking?" --explain
 
 # Mermaid graph (wraps output in ```mermaid fences)
-cargo run --offline -p deepresearch-cli run \
+cargo run --offline -p deepresearch-cli query \
+  "Map critical minerals policy responses" \
   --explain \
   --explain-format mermaid \
-  --trace-dir data/custom-traces \
-  --query "Map critical minerals policy responses"
+  --trace-dir data/custom-traces
+
+# Retrieve an existing explanation without re-running tasks
+cargo run --offline -p deepresearch-cli explain <SESSION_ID> --format text --explain-format graphviz
 ```
 
-- `--explain` enables the trace collector, prints the formatted summary, and persists `trace.json` per session (defaults to `data/traces/<session>.json`).
+- `--explain` (or the `explain` subcommand) enables the trace collector, prints the formatted summary, and persists `trace.json` per session (defaults to `data/traces/<session>.json`).
 - `--explain-format` accepts `markdown`, `mermaid`, or `graphviz`, matching the helpers on `SessionOutcome`.
 - `--trace-dir` overrides the output directory; the folder is created on demand.
 
@@ -96,7 +111,8 @@ Each persisted file is an array of `TraceEvent` objects with `task_id`, `message
 
 2. **Run the workflow with Qdrant-backed memory:**
    ```bash
-   cargo run -F qdrant-retriever -p deepresearch-cli run \
+   cargo run -F qdrant-retriever -p deepresearch-cli query \
+     "Run a Qdrant-backed session" \
      --session demo \
      --qdrant-url http://localhost:6334
    ```
@@ -161,7 +177,57 @@ Entries with malformed JSON are skipped (emitting a `debug!` log). Failures are 
 
 ---
 
-## 8. Clean-up
+## 8. REST API Quickstart
+
+```bash
+# Start the Axum server (in-memory storage by default)
+cargo run --offline -p deepresearch-api
+
+# Configure via environment variables (optional)
+export DEEPRESEARCH_API_ADDR=0.0.0.0:8080
+export DEEPRESEARCH_TRACE_DIR=data/traces
+export DEEPRESEARCH_QDRANT_URL=http://localhost:6334
+export DEEPRESEARCH_QDRANT_COLLECTION=deepresearch
+export DEEPRESEARCH_MAX_CONCURRENT_SESSIONS=5
+```
+
+### Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/query` | Runs a research session and returns the summary + optional explanation. |
+| `GET` | `/session/:id` | Fetches the latest session report without mutating state. |
+| `POST` | `/ingest` | Indexes documents for the configured retriever (Qdrant optional). |
+
+### Sample Requests
+
+```bash
+# Run a session with an embedded markdown explanation
+echo '{"query":"Assess regional battery incentives","explain":true}' \
+  | curl -s http://localhost:8080/query -H 'content-type: application/json' -d @-
+
+# Retrieve an existing session (graphviz explanation)
+curl -s "http://localhost:8080/session/<SESSION_ID>?explain=true&explain_format=graphviz&include_summary=true"
+
+# Ingest supporting material
+cat <<'DOCS' | curl -s http://localhost:8080/ingest \
+  -H 'content-type: application/json' \
+  -d @-
+{
+  "session_id": "demo",
+  "documents": [
+    {"text": "Lithium demand grows 20% YoY", "source": "notes/lithium.txt"},
+    {"text": "Sodium-ion pilots ramp in 2025", "source": "notes/sodium.txt"}
+  ]
+}
+DOCS
+```
+
+Errors return JSON with an `error` field and HTTP status codes (`404` when a session is missing, `429` when capacity is exhausted, `500` for unexpected failures).
+
+---
+
+## 9. Clean-up
 
 ```bash
 # Stop containers

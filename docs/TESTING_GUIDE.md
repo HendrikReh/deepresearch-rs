@@ -19,7 +19,7 @@ Milestones 1–4 cover the core GraphFlow workflow (Researcher → Analyst → C
 | Formatting | Ensure consistent style | `cargo fmt` |
 | Linting | Enforce Clippy lints | `cargo clippy --workspace --all-targets -- -D warnings` |
 | Compilation | Offline build (no network) | `cargo check --offline` |
-| Workflow smoke test | Run demo session | `cargo run -p deepresearch-cli --offline` |
+| Workflow smoke test | Run demo session | `cargo run -p deepresearch-cli --offline query "Test prompt"` |
 | Task unit tests | (to be added) per-task validation | Add `#[cfg(test)]` blocks under `tasks.rs` |
 | Integration | End-to-end session assertion | `cargo test --offline -p deepresearch-core critic_verdict_is_non_empty` |
 | Branching Integration | Manual-review path triggers | `cargo test --offline -p deepresearch-core manual_review_branch_triggers` |
@@ -49,7 +49,7 @@ docker exec -it <container> psql -U deepresearch -d deepresearch -c "SELECT 1;"
 ---
 
 ## Manual Verification Steps
-1. Run the CLI and confirm the output includes:
+1. Run the CLI (`deepresearch-cli query`) and confirm the output includes:
    - Critic verdict line.
    - Summary section.
    - Enumerated sources.

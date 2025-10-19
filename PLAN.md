@@ -51,9 +51,9 @@ This plan tracks the new graph-first implementation. Update the checkboxes and a
 - [x] Document trace schema and add tooling to render GraphViz/Mermaid.
 
 ### M7 — Interfaces (CLI & API)
-- [ ] Flesh out CLI commands (`query`, `ingest`, `eval`, `explain`, `resume`, `purge`) with structured output.
-- [ ] Build Axum API server exposing `POST /query`, `GET /session/:id`, `POST /ingest`.
-- [ ] Enforce capacity limits (HTTP 429) and include explainability toggles in responses.
+- [x] Flesh out CLI commands (`query`, `ingest`, `eval`, `explain`, `resume`, `purge`) with structured output.
+- [x] Build Axum API server exposing `POST /query`, `GET /session/:id`, `POST /ingest`.
+- [x] Enforce capacity limits (HTTP 429) and include explainability toggles in responses.
 
 ### M8 — Security, Privacy & Logging
 - [ ] Enforce env-only secrets, session purge, and data retention policies.

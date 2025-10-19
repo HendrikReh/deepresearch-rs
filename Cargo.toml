@@ -1,7 +1,8 @@
 [workspace]
 members = [
     "crates/deepresearch-core",
-    "crates/deepresearch-cli"
+    "crates/deepresearch-cli",
+    "crates/deepresearch-api"
 ]
 resolver = "2"
 

@@ -17,8 +17,9 @@ pub use tasks::{
 };
 pub use trace::{persist_trace, TraceCollector, TraceEvent, TraceStep, TraceSummary};
 pub use workflow::{
-    ingest_documents, resume_research_session, resume_research_session_with_report,
-    run_research_session, run_research_session_with_options, run_research_session_with_report,
-    BaseGraphTasks, GraphCustomizer, IngestOptions, ResumeOptions, RetrieverChoice, SessionOptions,
-    SessionOutcome, StorageChoice,
+    delete_session, ingest_documents, load_session_report, resume_research_session,
+    resume_research_session_with_report, run_research_session, run_research_session_with_options,
+    run_research_session_with_report, BaseGraphTasks, DeleteOptions, GraphCustomizer,
+    IngestOptions, LoadOptions, ResumeOptions, RetrieverChoice, SessionOptions, SessionOutcome,
+    StorageChoice,
 };
