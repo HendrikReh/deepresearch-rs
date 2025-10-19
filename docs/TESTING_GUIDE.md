@@ -7,6 +7,7 @@ This guide consolidates recommended verification steps for the DeepResearch stac
 ## 1. Prerequisites
 
 - **Rust** toolchain (`rustup`, latest stable)
+- **Node.js** 20+ (CI uses 23.x) for building the GUI bundle
 - Docker Desktop (for Qdrant/Postgres stack)
 - Optional: `just`, `jq`, `hey`/`wrk` for benchmarking, `curl`
 
@@ -18,6 +19,7 @@ This guide consolidates recommended verification steps for the DeepResearch stac
 
 | Goal | Command | Notes |
 |------|---------|-------|
+| Frontend build | `npm install --prefix crates/deepresearch-gui/web` (first time)<br>`npm ci --prefix crates/deepresearch-gui/web`<br>`npm run build --prefix crates/deepresearch-gui/web` | Build and update the GUI assets before running `deepresearch-gui` |
 | Format | `cargo fmt` | Required before committing |
 | Lint | `cargo clippy --workspace --all-targets -- -D warnings` | Ensures clean build |
 | Offline build smoke test | `cargo check --offline` | Catches missing workspace deps |

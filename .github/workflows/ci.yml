@@ -14,6 +14,13 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "23.x"
+          cache: "npm"
+          cache-dependency-path: crates/deepresearch-gui/web/package-lock.json
+
       - name: Install toolchain
         uses: dtolnay/rust-toolchain@stable
 
@@ -27,6 +34,14 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-cargo-
+
+      - name: Install GUI dependencies
+        working-directory: crates/deepresearch-gui/web
+        run: npm ci
+
+      - name: Build GUI assets
+        working-directory: crates/deepresearch-gui/web
+        run: npm run build
 
       - name: Format
         run: cargo fmt --all -- --check

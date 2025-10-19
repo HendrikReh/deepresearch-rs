@@ -92,10 +92,33 @@ This plan tracks the new graph-first implementation. Update the checkboxes and a
 - Preserve parity across interfaces (CLI/API/GUI) and enforce the “use context7” prompt rule.
 
 ### M10 — Axum GUI Foundations
-- [ ] Create a `deepresearch-gui` binary (Axum + Tailwind) that shares session orchestration with `deepresearch-core`.
-- [ ] Implement authentication + session selection flows that reuse storage backends (in-memory, Postgres).
-- [ ] Build chat/evidence layout with streaming updates via SSE/WebSocket and CLI-compatible markdown rendering.
-- [ ] Add smoke tests (UI integration harness + API contract tests) and document local dev workflow.
+**Target Window:** Weeks 1–3 of the v0.2 cycle (shift if infra blockers arise)
+
+#### Backend & Infrastructure
+- [x] Scaffold the standalone `deepresearch-gui` crate with Axum routing, shared session orchestrator wiring, and Tailwind/Vite asset pipeline. *(Owner: Platform)*
+- [ ] Ship managed-container bootstrap: config loader, env-secret wiring, `use context7` prompt enforcement, health/readiness probes, and OpenTelemetry hooks. *(Owner: Platform)*
+- [ ] Publish container image + Helm chart draft; integrate with deployment playbook (Immediate Follow-Up #1). *(Owner: DevOps)*
+
+#### Frontend UX & Realtime Flows
+- [x] Build chat + evidence panels with SSE/WebSocket streaming, Markdown renderer parity, and context key surface mirroring CLI/API. *(Owner: Frontend)*
+- [ ] Provide initial reasoning graph canvas (static JSON viewer) wired to TraceCollector JSON endpoint to unblock M11 visualization upgrades. *(Owner: Frontend)*
+- [ ] Implement auth/session selector supporting in-memory & Postgres storage, capacity guardrails, and managed-container session namespace switching. *(Owner: Frontend + Platform)*
+
+#### Quality, Tooling & Documentation
+- [ ] Add smoke/integration tests for HTTP endpoints, WebSocket flow, and asset build checks; gate via CI. *(Owner: QA)*
+- [x] Document local GUI iteration workflow (dev server, Tailwind watch, Docker override) and update onboarding guide. *(Owner: Docs)*
+- [ ] Define acceptance checklist covering end-to-end happy path, health probes, auth gating, and reporting to release readiness dashboard. *(Owner: QA + PM)*
+
+#### Dependencies & Coordination
+- **Prereqs:** Immediate Follow-Up #1 draft, storage feature flag parity, TraceCollector JSON endpoint finalized (from M11).
+- **Hand-offs:** Container artifact + doc set to DevOps for managed deployment pilot; streaming API contract shared with CLI/API teams.
+
+#### Acceptance Criteria
+- GUI crate builds and runs via `cargo run -p deepresearch-gui` and container entrypoint.
+- Managed deployment manifests validated in staging cluster with green health/readiness probes.
+- Live chat stream renders markdown responses, sources, and context keys; reasoning trace viewer loads latest session JSON.
+- Authentication + session selection works against both in-memory and Postgres storage with enforced concurrency caps.
+- CI job suite covers HTTP/WebSocket smoke tests and front-end asset compile; docs updated for contributors and operators.
 
 ### M11 — GUI Explainability & Observability
 - [ ] Render reasoning DAGs and trace timelines inside the GUI using the existing `TraceCollector` output.

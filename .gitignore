@@ -1,6 +1,33 @@
-target/
-data/
+### Rust artifacts
+/target/
+**/target/
+
+### Generated data & caches
+/data/
 /.fastembed_cache
+
+### Environment overrides
 /.env
-/.vscode
+**/.env.local
+**/.env.*.local
+
+### IDE metadata
+/.vscode/
+/.idea/
+
+### Bench snapshots
 /bench.json
+
+### Node / frontend outputs
+**/node_modules/
+**/.npm-cache/
+**/dist/
+**/.next/
+**/.turbo/
+**/pnpm-debug.log
+**/npm-debug.log
+**/yarn-error.log
+
+### OS cruft
+**/.DS_Store
+/crates/deepresearch-core/data

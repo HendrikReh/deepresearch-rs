@@ -16,6 +16,26 @@ Current capabilities include:
 
 ---
 
+## Table of Contents
+
+- [Workspace Layout](#workspace-layout)
+- [Quick Start](#quick-start)
+- [Service Startup Guides](#service-startup-guides)
+  - [CLI Research Runner](#cli-research-runner)
+  - [Axum API Server](#axum-api-server)
+  - [GUI Dashboard](#gui-dashboard)
+  - [Optional Data Services (Qdrant & Postgres)](#optional-data-services-qdrant--postgres)
+- [Milestone Status](#milestone-status)
+- [Testing](#testing)
+- [CLI Reference](#cli-reference)
+- [API Endpoints](#api-endpoints)
+- [Logging & Release](#logging--release)
+- [Graph Customisation](#graph-customisation)
+- [CI & Release](#ci--release)
+- [License](#license)
+
+---
+
 ## Workspace Layout
 
 ```
@@ -23,7 +43,9 @@ deepresearch-rs/
 ├── Cargo.toml
 ├── crates/
 │   ├── deepresearch-core   # GraphFlow tasks + workflow runner
-│   └── deepresearch-cli    # CLI utilities and canned workflows
+│   ├── deepresearch-cli    # CLI utilities and canned workflows
+│   ├── deepresearch-api    # Axum REST surface
+│   └── deepresearch-gui    # Axum + React GUI (v0.2 preview)
 ├── docs/
 │   ├── CI_GUIDE.md         # CI command matrix & local reproduction
 │   ├── RELEASE_CHECKLIST.md# Pre-release verification steps
@@ -57,7 +79,17 @@ cargo run --offline -p deepresearch-api &
 curl -s http://localhost:8080/health | jq
 kill $!
 
-# 5. Start the Qdrant/Postgres stack (optional)
+# 5. Build the GUI bundle (optional, required for Axum GUI)
+npm install --prefix crates/deepresearch-gui/web   # first time only to create package-lock.json
+npm ci --prefix crates/deepresearch-gui/web
+npm run build --prefix crates/deepresearch-gui/web
+
+# 6. Launch the GUI (requires GUI_ENABLE_GUI=true)
+GUI_ENABLE_GUI=true cargo run -p deepresearch-gui
+# Optional auth token:
+# GUI_ENABLE_GUI=true GUI_AUTH_TOKEN=supersecret cargo run -p deepresearch-gui
+
+# 7. Start the Qdrant/Postgres stack (optional)
 docker-compose up -d
 ```
 
@@ -65,17 +97,106 @@ Each CLI run emits the critic verdict, fact-check confidence, and enumerated sou
 
 ---
 
-## Local Stack (Qdrant + Postgres)
+## Service Startup Guides
 
-The bundled `docker-compose.yml` starts Qdrant (REST 6333 / gRPC 6334) and Postgres:
+### CLI Research Runner
+
+The CLI is the quickest way to exercise the multi-agent workflow end-to-end.
+
+1. Ensure `OPENAI_API_KEY` (or the provider you have configured) is exported in the environment.
+2. Run a one-shot session:
+   ```bash
+   cargo run --offline -p deepresearch-cli query "Compare sodium-ion vs lithium-ion pricing" --format text
+   ```
+3. Inspect context keys or replay with:
+   ```bash
+   cargo run --offline -p deepresearch-cli explain <SESSION_ID> --include-summary
+   cargo run --offline -p deepresearch-cli resume --session <SESSION_ID>
+   ```
+4. Generate latency benchmarks when validating changes:
+   ```bash
+   RUST_LOG=warn cargo run --offline -p deepresearch-cli bench "Local bench" --sessions 8 --concurrency 4 --format json
+   ```
+
+The CLI runs entirely in-memory by default. Point it at persistent storage by setting `DATABASE_URL` and/or enabling the Qdrant feature (see below).
+
+### Axum API Server
+
+Expose the workflow over HTTP for programmatic clients:
+
+```bash
+RUST_LOG=info cargo run --offline -p deepresearch-api
+```
+
+Key configuration knobs:
+
+| Variable | Purpose | Default |
+|----------|---------|---------|
+| `DEEPRESEARCH_MAX_CONCURRENT_SESSIONS` | Limit concurrent workflow executions | `5` |
+| `OPENAI_API_KEY` / provider-specific keys | LLM access | _required_ |
+| `DATABASE_URL` | Enable Postgres-backed session storage (`--features postgres-session`) | _unset_ |
+
+Sanity checks once the server is running:
+
+```bash
+curl -s http://localhost:8080/health | jq
+curl -s http://localhost:8080/query \
+  -H 'content-type: application/json' \
+  -d '{"query":"Assess regional battery incentives","explain":true}' | jq
+```
+
+The `/health` endpoint reports `active_sessions`, `available_sessions`, and `max_sessions`; exceeding capacity returns HTTP 429.
+
+### GUI Dashboard
+
+The GUI bundles the Axum server with a React front-end that streams session progress over SSE.
+
+1. Build the assets (first run generates `package-lock.json`):
+   ```bash
+   npm install --prefix crates/deepresearch-gui/web
+   npm ci --prefix crates/deepresearch-gui/web
+   npm run build --prefix crates/deepresearch-gui/web
+   ```
+2. Launch the server with the GUI toggle enabled:
+   ```bash
+   GUI_ENABLE_GUI=true RUST_LOG=info cargo run -p deepresearch-gui
+   ```
+3. Optional: require a bearer token.
+   ```bash
+   GUI_ENABLE_GUI=true GUI_AUTH_TOKEN=supersecret cargo run -p deepresearch-gui
+   ```
+4. Browse to [`http://localhost:8080`](http://localhost:8080) and submit a prompt. The events pane streams live updates, the summary pane displays the final synthesis, and the trace section renders the markdown sequence when tracing is enabled.
+
+GUI configuration summary:
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `GUI_ENABLE_GUI` | `false` | Serve `/api/*` + static GUI routes when set to `true` |
+| `GUI_AUTH_TOKEN` | _unset_ | Require `Authorization: Bearer <token>` for all GUI API/SSE calls |
+| `GUI_ASSETS_DIR` | `crates/deepresearch-gui/web/dist` | Path to the built Vite bundle |
+| `GUI_LISTEN_ADDR` | `0.0.0.0:8080` | Listen address for the combined Axum server |
+| `GUI_MAX_CONCURRENCY` | Host CPU count | Maximum concurrent sessions the GUI may dispatch |
+
+> Tip: rerun `npm ci && npm run build` inside `crates/deepresearch-gui/web` whenever you modify the frontend so the Axum server serves fresh assets.
+
+### Optional Data Services (Qdrant & Postgres)
+
+Start the persistence stack with Docker Compose:
 
 ```bash
 docker-compose up -d
-# Optional: docker compose ps
-# Teardown: docker-compose down
+# Optional status
+docker compose ps
 ```
 
-Set `DATABASE_URL=postgres://deepresearch:deepresearch@localhost:5432/deepresearch` to switch the workflow to persistent sessions. Qdrant is required for the hybrid retriever (`--features qdrant-retriever`).
+Configuration keys:
+
+| Component | Variable | Purpose |
+|-----------|----------|---------|
+| Postgres | `DATABASE_URL=postgres://deepresearch:deepresearch@localhost:5432/deepresearch` | Persist session graphs and context |
+| Qdrant | `--features qdrant-retriever` + `SessionOptions::with_qdrant_retriever(...)` | Enable hybrid memory + retrieval |
+
+Shut the stack down with `docker-compose down`. The CLI, API, and GUI automatically pick up these services when the corresponding environment variables and feature flags are set.
 
 ---
 

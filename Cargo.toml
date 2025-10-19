@@ -2,7 +2,8 @@
 members = [
     "crates/deepresearch-core",
     "crates/deepresearch-cli",
-    "crates/deepresearch-api"
+    "crates/deepresearch-api",
+    "crates/deepresearch-gui"
 ]
 resolver = "2"
 
