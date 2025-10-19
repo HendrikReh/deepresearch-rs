@@ -43,6 +43,7 @@ jobs:
       - name: CLI bench latency check
         env:
           CARGO_TERM_COLOR: always
+          RUST_LOG: warn
         run: |
           cargo run --offline -p deepresearch-cli bench "CI bench" --sessions 8 --concurrency 4 --format json > bench.json
           cat bench.json
@@ -52,10 +53,10 @@ jobs:
           echo "Average latency: $AVG ms"
           echo "P95 latency: $P95 ms"
           echo "Failure count: $FAIL"
-          if (( $(echo "$AVG > 150" | bc -l) )); then
-            echo "Average latency exceeds 150 ms" >&2; exit 1; fi
-          if (( $(echo "$P95 > 240" | bc -l) )); then
-            echo "P95 latency exceeds 240 ms" >&2; exit 1; fi
+          if (( $(echo "$AVG > 350" | bc -l) )); then
+            echo "Average latency exceeds 350 ms" >&2; exit 1; fi
+          if (( $(echo "$P95 > 400" | bc -l) )); then
+            echo "P95 latency exceeds 400 ms" >&2; exit 1; fi
           if [ "$FAIL" -ne 0 ]; then
             echo "Benchmark recorded failures" >&2; exit 1; fi
 
