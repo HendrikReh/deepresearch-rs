@@ -80,3 +80,57 @@ This plan tracks the new graph-first implementation. Update the checkboxes and a
 ---
 
 *Last updated:* 2025-10-19
+
+---
+
+## v0.2 Roadmap (Planned)
+
+### Objectives
+- Ship an Axum-based GUI that visualizes sessions, reasoning graphs, and evidence in real time.
+- Integrate a Python-powered math/stats toolchain accessible from the research workflow.
+- Stand up a continual learning loop that tunes agent behaviour using captured traces.
+- Preserve parity across interfaces (CLI/API/GUI) and enforce the “use context7” prompt rule.
+
+### M10 — Axum GUI Foundations
+- [ ] Create a `deepresearch-gui` binary (Axum + Tailwind) that shares session orchestration with `deepresearch-core`.
+- [ ] Implement authentication + session selection flows that reuse storage backends (in-memory, Postgres).
+- [ ] Build chat/evidence layout with streaming updates via SSE/WebSocket and CLI-compatible markdown rendering.
+- [ ] Add smoke tests (UI integration harness + API contract tests) and document local dev workflow.
+
+### M11 — GUI Explainability & Observability
+- [ ] Render reasoning DAGs and trace timelines inside the GUI using the existing `TraceCollector` output.
+- [ ] Surface per-task metrics (latency, retries, confidence) and highlight manual-review branches.
+- [ ] Expose explainability toggles (`--explain` parity) and downloadable trace artifacts.
+- [ ] Instrument frontend telemetry (OpenTelemetry exporter) and connect to tracing stack.
+
+### M12 — Python Tool Integration (Math & Stats)
+- [ ] Design the Python execution bridge (evaluate `pyo3`, `python-subprocess`, or microservice) with sandboxing + timeout guarantees.
+- [ ] Implement a `MathToolTask` that routes numeric sub-queries through the Python runtime and returns structured outputs.
+- [ ] Add regression tests covering numerical workloads (e.g., regression, summary stats) and failure fallbacks.
+- [ ] Document tooling setup (venv management, dependency pinning) and extend CI to validate the Python path offline.
+
+### M13 — Continual Learning & Behavioural Tuning
+- [ ] Define data pipeline that snapshots session traces/logs into a training corpus with consent + retention controls.
+- [ ] Build offline evaluation harness that scores new model checkpoints before promotion.
+- [ ] Automate weekly tuning job (CLI command + GitHub Action) producing performance deltas and release notes.
+- [ ] Update governance docs covering review gates, safety tests, and rollback procedures.
+
+### M14 — v0.2 Release Readiness
+- [ ] Update PRD, README, and docs (`docs/CI_GUIDE.md`, `docs/TESTING_GUIDE.md`, GUI quickstart) to reflect new interfaces.
+- [ ] Establish acceptance criteria (GUI usability ≥4/5, math-tool coverage, continual learning cadence) and add snapshot tests.
+- [ ] Run end-to-end load tests across CLI/API/GUI to confirm latency and concurrency targets.
+- [ ] Prepare release checklist including packaging, changelog, and deployment playbooks for GUI + Python services.
+
+### Cross-Cutting Initiatives (v0.2)
+- [ ] Enforce the “use context7” prefix across CLI, API, and GUI prompts (validation + developer guidance).
+- [ ] Expand monitoring dashboards with GUI metrics, Python tool health, and tuning job status.
+- [ ] Ensure security/privacy posture carries over to new components (auth, rate limiting, PII redaction).
+- [ ] Keep `AGENTS.md` and context-key registry in sync with new tasks and explainability fields.
+
+#### Resolved Decisions
+- GUI ships as a standalone `deepresearch-gui` crate/binary.
+- Optimize the initial GUI build for managed container deployments.
+- Python tooling will run via an external service standardized on Python 3.13.
+
+#### Open Questions
+- _(none pending)_
