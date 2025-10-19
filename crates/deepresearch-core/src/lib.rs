@@ -17,11 +17,11 @@ pub use tasks::{
     AnalystOutput, AnalystTask, CriticTask, FactCheckSettings, FactCheckTask, FinalizeTask,
     ManualReviewTask, ResearchTask,
 };
-pub use trace::{persist_trace, TraceCollector, TraceEvent, TraceStep, TraceSummary};
+pub use trace::{TraceCollector, TraceEvent, TraceStep, TraceSummary, persist_trace};
 pub use workflow::{
-    delete_session, ingest_documents, load_session_report, resume_research_session,
+    BaseGraphTasks, DeleteOptions, GraphCustomizer, IngestOptions, LoadOptions, ResumeOptions,
+    RetrieverChoice, SessionOptions, SessionOutcome, StorageChoice, delete_session,
+    ingest_documents, load_session_report, resume_research_session,
     resume_research_session_with_report, run_research_session, run_research_session_with_options,
-    run_research_session_with_report, BaseGraphTasks, DeleteOptions, GraphCustomizer,
-    IngestOptions, LoadOptions, ResumeOptions, RetrieverChoice, SessionOptions, SessionOutcome,
-    StorageChoice,
+    run_research_session_with_report,
 };

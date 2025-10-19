@@ -98,6 +98,8 @@ Customisers run *before* the default edges are added, allowing you to intercept 
 cargo fmt                    # format
 cargo check --offline        # build without hitting crates.io
 cargo run -p deepresearch-cli
+cargo test --offline --workspace --all-targets -- --nocapture   # mirrors CI
+cargo test --offline -p deepresearch-core finalize_summary_snapshot -- --nocapture
 ```
 
 Add new tasks by implementing `graph_flow::Task` and registering them in `build_graph()`. Prefer `NextAction::ContinueAndExecute` for straight-line execution and `NextAction::End` or `WaitForInput` for pauses.
@@ -143,6 +145,7 @@ ingest_documents(IngestOptions {
 - **Persistence:** Replace `InMemorySessionStorage` with the `PostgresSessionStorage` from the crate when durability is required.  
 - **Ingestion:** Use `deepresearch-cli ingest --session <id> --path <docs> --qdrant-url http://localhost:6334` to index local files into Qdrant (ensure port 6334 is exposed with `QDRANT__SERVICE__GRPC_PORT=6334`).
 - **Evaluation:** Analyse nightly logs with `EvaluationHarness::analyze_log(...)` to track fact-check confidence and failures.
+- **CI**: GitHub Actions enforces fmt/clippy/tests/snapshot/bench/API; see `docs/CI_GUIDE.md` for the full matrix.
 
 Document any new context keys or task IDs in this file to keep downstream contributors aligned.
 

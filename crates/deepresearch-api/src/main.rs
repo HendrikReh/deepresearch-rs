@@ -1,14 +1,14 @@
 use anyhow::Result;
 use axum::{
+    Json, Router,
     extract::{Path, Query, State},
     http::StatusCode,
     response::{IntoResponse, Response},
     routing::{get, post},
-    Json, Router,
 };
 use deepresearch_core::{
-    ingest_documents, load_session_report, run_research_session_with_report, IngestDocument,
-    IngestOptions, LoadOptions, RetrieverChoice, SessionOptions, SessionOutcome, TraceEvent,
+    IngestDocument, IngestOptions, LoadOptions, RetrieverChoice, SessionOptions, SessionOutcome,
+    TraceEvent, ingest_documents, load_session_report, run_research_session_with_report,
 };
 use graph_flow::{InMemorySessionStorage, SessionStorage};
 use serde::{Deserialize, Serialize};

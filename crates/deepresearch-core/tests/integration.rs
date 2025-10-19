@@ -1,6 +1,6 @@
 use deepresearch_core::{
-    resume_research_session, run_research_session, run_research_session_with_options,
-    FactCheckSettings, ResumeOptions, SessionOptions,
+    FactCheckSettings, ResumeOptions, SessionOptions, resume_research_session,
+    run_research_session, run_research_session_with_options,
 };
 use graph_flow::InMemorySessionStorage;
 use insta::assert_snapshot;

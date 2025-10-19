@@ -1,9 +1,9 @@
 use anyhow::Result;
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use deepresearch_core::{
+    DeleteOptions, EvaluationHarness, LoadOptions, ResumeOptions, SessionOptions, SessionOutcome,
     delete_session, load_session_report, remove_session_logs, resume_research_session_with_report,
-    run_research_session_with_report, DeleteOptions, EvaluationHarness, LoadOptions, ResumeOptions,
-    SessionOptions, SessionOutcome,
+    run_research_session_with_report,
 };
 #[cfg(feature = "qdrant-retriever")]
 use deepresearch_core::{IngestDocument, IngestOptions, RetrieverChoice};
@@ -780,10 +780,10 @@ fn purge_trace_file(session_id: &str) {
     let trace_dir =
         std::env::var("DEEPRESEARCH_TRACE_DIR").unwrap_or_else(|_| "data/traces".to_string());
     let trace_path = PathBuf::from(trace_dir).join(format!("{session_id}.json"));
-    if trace_path.exists() {
-        if let Err(err) = fs::remove_file(&trace_path) {
-            warn!(session = %session_id, error = %err, "failed to remove trace file");
-        }
+    if trace_path.exists()
+        && let Err(err) = fs::remove_file(&trace_path)
+    {
+        warn!(session = %session_id, error = %err, "failed to remove trace file");
     }
 }
 

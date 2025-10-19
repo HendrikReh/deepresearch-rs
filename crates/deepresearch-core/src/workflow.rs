@@ -1,4 +1,4 @@
-use crate::logging::{log_session_completion, SessionLogInput};
+use crate::logging::{SessionLogInput, log_session_completion};
 #[cfg(feature = "qdrant-retriever")]
 use crate::memory::qdrant::{HybridRetriever, QdrantConfig};
 use crate::memory::{DynRetriever, IngestDocument, StubRetriever};
@@ -6,8 +6,8 @@ use crate::tasks::{
     AnalystOutput, AnalystTask, CriticTask, FactCheckSettings, FactCheckTask, FinalizeTask,
     ManualReviewTask, ResearchTask,
 };
-use crate::trace::{persist_trace, TraceCollector, TraceEvent, TraceSummary};
-use anyhow::{anyhow, Result};
+use crate::trace::{TraceCollector, TraceEvent, TraceSummary, persist_trace};
+use anyhow::{Result, anyhow};
 use graph_flow::{
     ExecutionStatus, FlowRunner, GraphBuilder, InMemorySessionStorage, Session, SessionStorage,
     Task,

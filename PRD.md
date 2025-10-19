@@ -281,7 +281,7 @@ deepresearch explain --last
 - Async execution with Tokio.  
 - Parallel search requests and agent threads.  
 - Graceful error handling per node → graph continues where possible.  
-- Target latency: median end-to-end query ≤ 150 seconds with Qdrant reachable; P95 ≤ 240 seconds.  
+- Target latency: median end-to-end query ≤ 150 seconds with Qdrant reachable; P95 ≤ 240 seconds. (Current CI guardrails fail if avg > 350 ms or p95 > 400 ms during synthetic benches.)  
 - Fallback behavior: if external search exceeds 20 seconds, switch to cached embeddings and flag report with `partial_sources: true`.  
 - Instrumentation: `tracing` spans emitted per DAG node, aggregated via `tracing-subscriber` + OpenTelemetry exporter (optional feature flag).  
 - Capacity planning: orchestrator limits concurrent sessions to 5; beyond that, CLI/API return HTTP 429 with retry-after hint.

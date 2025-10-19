@@ -1,12 +1,13 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 
-use anyhow::{anyhow, Context};
+use anyhow::{Context, anyhow};
 use async_trait::async_trait;
 use fastembed::TextEmbedding;
 use qdrant_client::qdrant::{
-    value::Kind as QValueKind, Condition, CreateCollectionBuilder, Distance, Filter, ListValue,
-    PointStruct, SearchPointsBuilder, UpsertPointsBuilder, Value as QValue, VectorParamsBuilder,
+    Condition, CreateCollectionBuilder, Distance, Filter, ListValue, PointStruct,
+    SearchPointsBuilder, UpsertPointsBuilder, Value as QValue, VectorParamsBuilder,
+    value::Kind as QValueKind,
 };
 use qdrant_client::{Payload, Qdrant};
 use tokio::sync::Semaphore;

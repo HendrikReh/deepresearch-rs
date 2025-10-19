@@ -69,7 +69,7 @@ DATABASE_URL=postgres://deepresearch:deepresearch@localhost:5432/deepresearch \
   cargo run --offline -F postgres-session -p deepresearch-cli purge <SESSION_ID>
 
 # Benchmark session throughput at a given concurrency
-cargo run --offline -p deepresearch-cli bench "Stress-test battery policy query" \
+RUST_LOG=warn cargo run --offline -p deepresearch-cli bench "Stress-test battery policy query" \
   --sessions 24 \
   --concurrency 6 \
   --format json

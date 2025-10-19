@@ -3,3 +3,4 @@ data/
 /.fastembed_cache
 /.env
 /.vscode
+/bench.json

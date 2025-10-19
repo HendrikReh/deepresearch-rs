@@ -32,10 +32,8 @@ impl EvaluationMetrics {
         self.average_confidence =
             ((self.average_confidence * (self.evaluated_sessions - 1) as f32) + log.confidence)
                 / self.evaluated_sessions as f32;
-        if !log.passed {
-            if let Some(id) = session_id {
-                self.failures.push(id);
-            }
+        if let (false, Some(id)) = (log.passed, session_id) {
+            self.failures.push(id);
         }
     }
 

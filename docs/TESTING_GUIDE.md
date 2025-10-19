@@ -23,6 +23,7 @@ This guide consolidates recommended verification steps for the DeepResearch stac
 | Offline build smoke test | `cargo check --offline` | Catches missing workspace deps |
 | Full test suite | `cargo test --workspace --all-targets -- --nocapture` | Runs unit + integration + logging tests |
 | Snapshot regression | `cargo test --offline -p deepresearch-core finalize_summary_snapshot` | Guards finalize/critic output formatting (use `INSTA_UPDATE=always cargo test --offline -p deepresearch-core finalize_summary_snapshot` to refresh deliberately) |
+| Offline harness | `cargo test --offline --workspace --all-targets -- --nocapture` | Mirrors CI test matrix locally |
 
 ---
 

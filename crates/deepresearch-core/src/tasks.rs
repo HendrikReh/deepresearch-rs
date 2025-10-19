@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use graph_flow::{Context, NextAction, Task, TaskResult};
 use serde::{Deserialize, Serialize};
-use tokio::time::{sleep, Duration};
+use tokio::time::{Duration, sleep};
 use tracing::{debug, info, instrument, warn};
 
 use crate::memory::{DynRetriever, RetrievedDocument};

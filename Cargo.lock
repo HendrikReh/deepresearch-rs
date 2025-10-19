@@ -671,7 +671,7 @@ dependencies = [
 
 [[package]]
 name = "deepresearch-api"
-version = "0.1.0"
+version = "0.1.9"
 dependencies = [
  "anyhow",
  "axum",
@@ -687,7 +687,7 @@ dependencies = [
 
 [[package]]
 name = "deepresearch-cli"
-version = "0.1.0"
+version = "0.1.9"
 dependencies = [
  "anyhow",
  "clap",
@@ -703,7 +703,7 @@ dependencies = [
 
 [[package]]
 name = "deepresearch-core"
-version = "0.1.0"
+version = "0.1.9"
 dependencies = [
  "anyhow",
  "async-trait",

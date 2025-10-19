@@ -1,7 +1,11 @@
 # DeepResearch
-DeepResearch is a Rust-based multi-agent system designed to autonomously gather, analyze, and synthesize information for complex business questions — with full traceability and explainability. It showcases advanced AI-native research orchestration and serves as a flagship demonstration of my consulting and engineering expertise.
 
-This repository contains a minimal, graph-first implementation of the DeepResearch agent pipeline, with all multi-agent orchestration powered directly by [`graph_flow`](https://docs.rs/graph-flow/latest/)
+DeepResearch is a Rust-based multi-agent system that answers complex business questions with explainable reasoning, confidence scoring, and production-grade observability. The entire workflow is modelled as a [`graph_flow`](https://docs.rs/graph-flow/latest/graph_flow/) DAG—no bespoke planners or orchestration frameworks required.
+
+Current capabilities include:
+- Researcher → Analyst → Fact-Checker → Critic → Finalise loop with structured context keys
+- CLI surface (`query`, `resume`, `explain`, `ingest`, `eval`, `purge`, `bench`) and Axum API (`/query`, `/session/:id`, `/ingest`, `/health`)
+- Snapshot-tested summaries, redacted session logging with retention, and automated latency gates in CI
 
 ---
 
@@ -12,11 +16,15 @@ deepresearch-rs/
 ├── Cargo.toml
 ├── crates/
 │   ├── deepresearch-core   # GraphFlow tasks + workflow runner
-│   └── deepresearch-cli    # Demo binary that runs the workflow
-├── docs/                   # Testing guide and supporting docs
-├── AGENTS.md               # Developer reference
+│   └── deepresearch-cli    # CLI utilities and canned workflows
+├── docs/
+│   ├── CI_GUIDE.md         # CI command matrix & local reproduction
+│   ├── RELEASE_CHECKLIST.md# Pre-release verification steps
+│   ├── TESTING_GUIDE.md    # Comprehensive test matrix
+│   └── USAGE.md            # CLI/API walkthrough & troubleshooting
+├── AGENTS.md               # Developer reference & context keys
 ├── PLAN.md                 # Roadmap / milestone tracking
-└── PRD.md                  # Product requirements
+└── PRD.md                  # Product requirements document
 ```
 
 ---
@@ -24,47 +32,43 @@ deepresearch-rs/
 ## Quick Start
 
 ```bash
-# Format & lint
+# 1. Format & lint
 cargo fmt
 cargo clippy --workspace --all-targets -- -D warnings
 
-# Run tests (offline if dependencies are cached)
-cargo test --workspace --offline
+# 2. Test (mirrors CI)
+cargo test --workspace --all-targets -- --nocapture
+cargo test --offline -p deepresearch-core finalize_summary_snapshot -- --nocapture
 
-# Start local stack (requires Docker Desktop)
+# 3. Run the CLI (in-memory sessions)
+cargo run --offline -p deepresearch-cli query "What is fueling sodium-ion adoption?" --format text
+cargo run --offline -p deepresearch-cli explain <SESSION_ID> --include-summary
+cargo run --offline -p deepresearch-cli bench "Latency smoke" --sessions 8 --concurrency 4 --format json
+
+# 4. Launch the API (optional)
+cargo run --offline -p deepresearch-api &
+curl -s http://localhost:8080/health | jq
+kill $!
+
+# 5. Start the Qdrant/Postgres stack (optional)
 docker-compose up -d
-
-# Execute the demo workflow (in-memory sessions)
-cargo run --offline -p deepresearch-cli run
-
-# Resume an existing session
-cargo run --offline -p deepresearch-cli resume --session <uuid>
-
-# Use Postgres-backed sessions
-DATABASE_URL=postgres://deepresearch:deepresearch@localhost:5432/deepresearch \\
-  cargo run --offline -F postgres-session -p deepresearch-cli run
 ```
 
-This produces a critic verdict summarising the analyst’s findings and enumerating supporting sources.
-For a deeper walkthrough (stack setup, hybrid retrieval, troubleshooting), see [`docs/USAGE.md`](docs/USAGE.md).
+Each CLI run emits the critic verdict, fact-check confidence, and enumerated sources; `--format json` produces structured payloads. Refer to [`docs/USAGE.md`](docs/USAGE.md) for detailed walkthroughs, hybrid retrieval setup, and troubleshooting tips.
 
 ---
 
 ## Local Stack (Qdrant + Postgres)
 
-The repository ships with a simple `docker-compose.yml` that launches Qdrant and Postgres:
+The bundled `docker-compose.yml` starts Qdrant (REST 6333 / gRPC 6334) and Postgres:
 
 ```bash
 docker-compose up -d
-
-# Optional: inspect services
-docker ps
-
-# Tear down when finished
-docker-compose down
+# Optional: docker compose ps
+# Teardown: docker-compose down
 ```
 
-Postgres sessions require `DATABASE_URL` to point at the running container (see the quick-start snippet above). In-memory storage remains the default for quick experiments.
+Set `DATABASE_URL=postgres://deepresearch:deepresearch@localhost:5432/deepresearch` to switch the workflow to persistent sessions. Qdrant is required for the hybrid retriever (`--features qdrant-retriever`).
 
 ---
 
@@ -72,119 +76,93 @@ Postgres sessions require `DATABASE_URL` to point at the running container (see 
 
 | Milestone | Status | Summary |
 |-----------|--------|---------|
-| M0 — Graph Foundation | ✅ | Core Researcher → Analyst → Critic tasks wired via `graph_flow` |
-| M1 — Observability & Testing | ✅ | Structured tracing, integration test, documented context keys |
-| M2 — Branching & Extensibility | ✅ | Conditional manual-review branch, graph customiser, session options |
-| M3 — Persistence & Replay | ✅ | Postgres session storage, resume APIs, docker-compose stack |
-| M4 — Memory & Retrieval | ✅ | FastEmbed + Qdrant hybrid retriever, CLI ingestion workflow |
-| M5 — Fact-Checking & Evaluation | ✅ | Fact-check task, confidence logging, evaluation harness |
-| M6+ | 🚧 | See `PLAN.md` for upcoming work (explainability, interfaces, etc.) |
+| M0 — Graph Foundation | ✅ | Researcher → Analyst → Critic tasks wired via GraphFlow |
+| M1 — Observability & Testing | ✅ | Structured tracing, integration tests, documented context keys |
+| M2 — Branching & Extensibility | ✅ | Manual-review branch, graph customiser hook, session options |
+| M3 — Persistence & Replay | ✅ | Postgres storage, resume APIs, docker-compose stack |
+| M4 — Memory & Retrieval | ✅ | FastEmbed + Qdrant retriever, CLI ingestion |
+| M5 — Fact-Checking & Evaluation | ✅ | Fact-check task & evaluation harness |
+| M6 — Explainability & Trace | ✅ | Trace collector, Mermaid/GraphViz renderers, CLI/API explainers |
+| M7 — Interfaces (CLI & API) | ✅ | Full CLI surface, Axum API with 429 throttling & `/health` |
+| M8 — Security, Privacy & Logging | ✅ | Redacted JSONL session logging, retention pruning, purge cleanup |
+| M9 — Performance & Release Gates | ✅ | Bench latency guard (CI thresholds avg ≤ 350 ms / p95 ≤ 400 ms), release checklist |
 
-Refer to `PLAN.md` for the full roadmap.
+See [`PLAN.md`](PLAN.md) for the detailed roadmap and dated notes.
 
 ---
 
 ## Testing
 
-See `docs/TESTING_GUIDE.md` for the complete matrix. Key commands:
+`docs/TESTING_GUIDE.md` enumerates the full matrix. Common commands:
 
 ```bash
 cargo fmt
 cargo clippy --workspace --all-targets -- -D warnings
 cargo check --offline
-cargo test --offline -p deepresearch-core critic_verdict_is_non_empty
-cargo test --offline -p deepresearch-core manual_review_branch_triggers
-cargo test --offline -p deepresearch-core resume_session_returns_summary
+cargo test --workspace --all-targets -- --nocapture
+cargo test --offline -p deepresearch-core finalize_summary_snapshot -- --nocapture
+RUST_LOG=warn cargo run --offline -p deepresearch-cli bench "CI bench" --sessions 8 --concurrency 4 --format json
 ```
+
+Snapshot updates: run `INSTA_UPDATE=always cargo test --offline -p deepresearch-core finalize_summary_snapshot -- --nocapture` only when intentionally changing the baseline summary.
 
 ---
 
-## CLI Commands
+## CLI Reference
 
 ```bash
-# Run new session
-cargo run --offline -p deepresearch-cli run --query "Compare EV supply chains"
+# Run a new session (text output by default)
+cargo run --offline -p deepresearch-cli query "Compare EV supply chains" --format text
 
-# Resume existing session (requires persistent storage)
-cargo run --offline -p deepresearch-cli resume --session <uuid>
+# Explain an existing session
+cargo run --offline -p deepresearch-cli explain <SESSION_ID> --include-summary --explain-format mermaid
 
-# Use Postgres-backed sessions (feature flag + DATABASE_URL)
-DATABASE_URL=postgres://deepresearch:deepresearch@localhost:5432/deepresearch \
-  cargo run --offline -F postgres-session -p deepresearch-cli run --session $(uuidgen)
+# Resume using shared storage
+cargo run --offline -p deepresearch-cli resume --session <SESSION_ID>
 
-# Ingest local documents into Qdrant (gRPC endpoint required)
-cargo run -F qdrant-retriever -p deepresearch-cli ingest --session <uuid> --path ./docs --qdrant-url http://localhost:6334
+# Ingest local documents into Qdrant
+cargo run -F qdrant-retriever -p deepresearch-cli ingest --session demo --path ./docs --qdrant-url http://localhost:6334
+
+# Evaluate fact-check logs
+cargo run --offline -p deepresearch-cli eval data/logs/demo.jsonl --format json
+
+# Purge session state, trace, and logs
+cargo run --offline -p deepresearch-cli purge <SESSION_ID>
+
+# Benchmark latency (CI thresholds avg ≤350 ms / p95 ≤400 ms)
+RUST_LOG=warn cargo run --offline -p deepresearch-cli bench "Release bench" --sessions 24 --concurrency 6 --format json
 ```
 
-> Requires `curl` available on PATH (used for REST calls to Qdrant).
-
 ---
 
-## Hybrid Retrieval (Qdrant + FastEmbed)
+## API Endpoints
 
-1. **Start Qdrant with gRPC enabled.** The bundled `docker-compose.yml` maps both ports:
-   ```bash
-   docker-compose up -d        # exposes 6333 (REST) and 6334 (gRPC)
-   ```
-   If you start Qdrant manually, add `-p 6334:6334 -e QDRANT__SERVICE__GRPC_PORT=6334`.
-2. **Ingest supporting documents** into the session namespace:
-   ```bash
-   cargo run -F qdrant-retriever -p deepresearch-cli ingest \
-     --session demo \
-     --path ./docs \
-     --qdrant-url http://localhost:6334
-   ```
-   The first run downloads the FastEmbed ONNX model (~127 MiB). Reruns reuse the cache under `.fastembed_cache/`.
-3. **Run the workflow against Qdrant-backed memory:**
-   ```bash
-   cargo run -F qdrant-retriever -p deepresearch-cli run \
-     --session demo \
-     --qdrant-url http://localhost:6334
-   ```
-4. **Troubleshooting:** A `Unknown error h2 protocol error` means the client reached the REST port (6333). Point `--qdrant-url` at the gRPC port (6334) and ensure the container exposes it.
-5. **Tune fact-check behaviour:** customise thresholds via `SessionOptions::with_fact_check_settings(...)` (see `docs/USAGE.md`).
+Start the Axum server with `cargo run --offline -p deepresearch-api` and call:
 
----
-
-## Evaluation Harness
-
-Use the bundled `EvaluationHarness` to aggregate fact-check outcomes from log files:
-
-```rust
-use deepresearch_core::{eval::EvaluationHarness, FactCheckSettings};
-
-let metrics = EvaluationHarness::analyze_log("logs/factcheck.jsonl")?;
-println!("{}", metrics.summary());
+```bash
+curl -s http://localhost:8080/health | jq
+curl -s http://localhost:8080/query \
+  -H 'content-type: application/json' \
+  -d '{"query":"Assess regional battery incentives","explain":true}' | jq
+curl -s "http://localhost:8080/session/<SESSION_ID>?explain=true&include_summary=true" | jq
 ```
 
-(See [`docs/USAGE.md`](docs/USAGE.md) for CLI-friendly workflows.)
+`/health` reports `max_sessions`, `available_sessions`, and `active_sessions`; exceeding configured capacity yields HTTP 429.
 
 ---
 
-## Context Keys
+## Logging & Release
 
-| Key | Notes |
-|-----|-------|
-| `query` | Original user prompt. |
-| `research.findings` | Vector of bullet insights from the researcher. |
-| `research.sources` | Source URIs attached to findings. |
-| `analysis.output` | Structured summary (`AnalystOutput`). |
-| `factcheck.confidence` | Confidence score computed by the fact-check task. |
-| `factcheck.verified_sources` | Sources sampled during fact-check verification. |
-| `factcheck.passed` | Indicates whether the fact-check met the configured threshold. |
-| `factcheck.notes` | Human-readable notes about the verification pass. |
-| `critique.confident` | Boolean confidence flag from critic. |
-| `critique.verdict` | Human-readable verdict string. |
-| `final.summary` | Final message from `FinalizeTask`/`ManualReviewTask`. |
-| `final.requires_manual` | Marks sessions requiring manual verification. |
-
-(See `AGENTS.md` for more details.)
+- Session completions append redacted JSON lines under `data/logs/<year>/<month>/`. Secrets (`api_key=…`, `bearer …`, `sk-…`) are replaced with `[REDACTED]` and mirrored into `audit.jsonl`.
+- Configure retention via `DEEPRESEARCH_LOG_RETENTION_DAYS` (default 90). Set `DEEPRESEARCH_LOG_DIR` to redirect log storage.
+- `deepresearch-cli purge <SESSION>` removes session state, traces, and log/audit entries.
+- See [`docs/RELEASE_CHECKLIST.md`](docs/RELEASE_CHECKLIST.md) for pre-release verification (bench thresholds, API smoke, logging audit).
 
 ---
 
 ## Graph Customisation
 
-Inject extra tasks or edges with `SessionOptions::with_customizer`:
+Custom tasks can be injected with `SessionOptions::with_customizer`:
 
 ```rust
 use async_trait::async_trait;
@@ -199,7 +177,6 @@ impl Task for PreCritic {
     fn id(&self) -> &str { "pre_critic" }
 
     async fn run(&self, ctx: Context) -> graph_flow::Result<TaskResult> {
-        // Example: tweak context before the critic executes
         ctx.set("analysis.notes", "custom hook executed").await;
         Ok(TaskResult::new(None, NextAction::ContinueAndExecute))
     }
@@ -216,16 +193,15 @@ let options = SessionOptions::new("Query").with_customizer(Box::new(move |builde
 let summary = run_research_session_with_options(options).await?;
 ```
 
-Customisers run before the default edges are added, so you can intercept or extend the workflow.
+---
+
+## CI & Release
+
+- CI workflow: `.github/workflows/ci.yml` (fmt, clippy, tests, snapshot guard, bench latency, API smoke). Details in [`docs/CI_GUIDE.md`](docs/CI_GUIDE.md).
+- Release procedure: [`docs/RELEASE_CHECKLIST.md`](docs/RELEASE_CHECKLIST.md).
 
 ---
 
-## GitHub Actions
+## License
 
-Basic CI is defined in `.github/workflows/ci.yml` (fmt, clippy, tests).
-
----
-
-## Licensing
-
-Released under the MIT License. See `LICENSE` for details.
+Licensed under the GNU General Public License v3.0 (or, at your option, any later version). See `LICENSE` for the full text.

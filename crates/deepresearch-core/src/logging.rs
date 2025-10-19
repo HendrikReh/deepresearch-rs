@@ -4,7 +4,7 @@ use once_cell::sync::Lazy;
 use regex::{Captures, Regex};
 use serde::Serialize;
 use std::collections::HashSet;
-use std::fs::{self, create_dir_all, File, OpenOptions};
+use std::fs::{self, File, OpenOptions, create_dir_all};
 use std::io::{BufRead, BufReader, BufWriter, Write};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
@@ -268,11 +268,11 @@ fn rewrite_jsonl_without(path: &Path, session_id: &str) -> Result<()> {
     let mut removed = false;
     for line in reader.lines() {
         let line = line?;
-        if let Ok(value) = serde_json::from_str::<serde_json::Value>(&line) {
-            if value.get("session_id").and_then(|v| v.as_str()) == Some(session_id) {
-                removed = true;
-                continue;
-            }
+        if let Ok(value) = serde_json::from_str::<serde_json::Value>(&line)
+            && value.get("session_id").and_then(|v| v.as_str()) == Some(session_id)
+        {
+            removed = true;
+            continue;
         }
         retained.push(line);
     }
@@ -309,8 +309,10 @@ mod tests {
     #[test]
     fn session_logging_sanitizes_and_persists() -> Result<()> {
         let temp = TempDir::new().expect("temp dir");
-        std::env::set_var(LOG_DIR_ENV, temp.path());
-        std::env::set_var(RETENTION_ENV, "0");
+        unsafe {
+            std::env::set_var(LOG_DIR_ENV, temp.path());
+            std::env::set_var(RETENTION_ENV, "0");
+        }
 
         let input = SessionLogInput {
             session_id: "test-session".to_string(),
