@@ -24,7 +24,7 @@ Milestones 1–4 cover the core GraphFlow workflow (Researcher → Analyst → C
 | Integration | End-to-end session assertion | `cargo test --offline -p deepresearch-core critic_verdict_is_non_empty` |
 | Branching Integration | Manual-review path triggers | `cargo test --offline -p deepresearch-core manual_review_branch_triggers` |
 | Resume Integration | Resume existing session returns summary | `cargo test --offline -p deepresearch-core resume_session_returns_summary` |
-| Retrieval Ingestion | Index docs into Qdrant | `cargo run --offline -F qdrant-retriever -p deepresearch-cli ingest --session demo --path ./docs --qdrant-url http://localhost:6333` |
+| Retrieval Ingestion | Index docs into Qdrant | `cargo run -F qdrant-retriever -p deepresearch-cli ingest --session demo --path ./docs --qdrant-url http://localhost:6334` |
 
 ---
 
@@ -32,7 +32,8 @@ Milestones 1–4 cover the core GraphFlow workflow (Researcher → Analyst → C
 
 *Start services:* `docker-compose up -d` (requires Docker Desktop).
 
-*Verify Qdrant:* `curl http://localhost:6333/health` → expect `{"status":"ok"}`.
+*Verify Qdrant REST:* `curl http://localhost:6333/health` → expect `{"status":"ok"}`.
+*Verify gRPC port:* Confirm `6334` is exposed (e.g., `lsof -i :6334`) when using the hybrid retriever.
 
 *Verify Postgres connectivity:*
 ```bash

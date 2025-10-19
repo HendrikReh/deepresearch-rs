@@ -46,6 +46,7 @@ DATABASE_URL=postgres://deepresearch:deepresearch@localhost:5432/deepresearch \\
 ```
 
 This produces a critic verdict summarising the analyst’s findings and enumerating supporting sources.
+For a deeper walkthrough (stack setup, hybrid retrieval, troubleshooting), see [`docs/USAGE.md`](docs/USAGE.md).
 
 ---
 
@@ -110,11 +111,36 @@ cargo run --offline -p deepresearch-cli resume --session <uuid>
 DATABASE_URL=postgres://deepresearch:deepresearch@localhost:5432/deepresearch \
   cargo run --offline -F postgres-session -p deepresearch-cli run --session $(uuidgen)
 
-# Ingest local documents into Qdrant
-cargo run --offline -F qdrant-retriever -p deepresearch-cli ingest --session <uuid> --path ./docs --qdrant-url http://localhost:6333
+# Ingest local documents into Qdrant (gRPC endpoint required)
+cargo run -F qdrant-retriever -p deepresearch-cli ingest --session <uuid> --path ./docs --qdrant-url http://localhost:6334
 ```
 
 > Requires `curl` available on PATH (used for REST calls to Qdrant).
+
+---
+
+## Hybrid Retrieval (Qdrant + FastEmbed)
+
+1. **Start Qdrant with gRPC enabled.** The bundled `docker-compose.yml` maps both ports:
+   ```bash
+   docker-compose up -d        # exposes 6333 (REST) and 6334 (gRPC)
+   ```
+   If you start Qdrant manually, add `-p 6334:6334 -e QDRANT__SERVICE__GRPC_PORT=6334`.
+2. **Ingest supporting documents** into the session namespace:
+   ```bash
+   cargo run -F qdrant-retriever -p deepresearch-cli ingest \
+     --session demo \
+     --path ./docs \
+     --qdrant-url http://localhost:6334
+   ```
+   The first run downloads the FastEmbed ONNX model (~127 MiB). Reruns reuse the cache under `.fastembed_cache/`.
+3. **Run the workflow against Qdrant-backed memory:**
+   ```bash
+   cargo run -F qdrant-retriever -p deepresearch-cli run \
+     --session demo \
+     --qdrant-url http://localhost:6334
+   ```
+4. **Troubleshooting:** A `Unknown error h2 protocol error` means the client reached the REST port (6333). Point `--qdrant-url` at the gRPC port (6334) and ensure the container exposes it.
 
 ---
 
