@@ -4,7 +4,7 @@
 [![Version](https://img.shields.io/badge/version-0.2.0-informational.svg)](https://github.com/your-org/deepresearch-rs)
 [![Rust Edition](https://img.shields.io/badge/Rust-2024-blue.svg)](https://www.rust-lang.org/)
 [![OpenAI](https://img.shields.io/badge/OpenAI-Integration-brightgreen.svg)](https://openai.com)
-[![Collaboration](https://img.shields.io/badge/Collaboration-Welcome-orange.svg)](https://github.com/your-org/deepresearch-rs/contribute)
+[![Collaboration](https://img.shields.io/badge/Collaboration-Welcome-orange.svg)](CONTRIBUTING.md)
 [![License](https://img.shields.io/badge/License-GPL--3.0--or--later-purple.svg)](LICENSE)
 
 DeepResearch is a Rust-based multi-agent system that answers complex business questions with explainable reasoning, confidence scoring, and production-grade observability. The entire workflow is modelled as a [`graph_flow`](https://docs.rs/graph-flow/latest/graph_flow/) DAG—no bespoke planners or orchestration frameworks required.
