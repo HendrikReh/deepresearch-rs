@@ -6,6 +6,7 @@
 mod eval;
 mod memory;
 mod tasks;
+mod trace;
 mod workflow;
 
 pub use eval::{EvaluationHarness, EvaluationMetrics};
@@ -14,8 +15,10 @@ pub use tasks::{
     AnalystOutput, AnalystTask, CriticTask, FactCheckSettings, FactCheckTask, FinalizeTask,
     ManualReviewTask, ResearchTask,
 };
+pub use trace::{persist_trace, TraceCollector, TraceEvent, TraceStep, TraceSummary};
 pub use workflow::{
-    ingest_documents, resume_research_session, run_research_session,
-    run_research_session_with_options, BaseGraphTasks, GraphCustomizer, IngestOptions,
-    ResumeOptions, RetrieverChoice, SessionOptions, StorageChoice,
+    ingest_documents, resume_research_session, resume_research_session_with_report,
+    run_research_session, run_research_session_with_options, run_research_session_with_report,
+    BaseGraphTasks, GraphCustomizer, IngestOptions, ResumeOptions, RetrieverChoice, SessionOptions,
+    SessionOutcome, StorageChoice,
 };

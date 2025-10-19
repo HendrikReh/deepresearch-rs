@@ -1,7 +1,8 @@
 use anyhow::Result;
-use clap::{Args, Parser, Subcommand};
+use clap::{Args, Parser, Subcommand, ValueEnum};
 use deepresearch_core::{
-    resume_research_session, run_research_session_with_options, ResumeOptions, SessionOptions,
+    resume_research_session, resume_research_session_with_report, run_research_session_with_report,
+    ResumeOptions, SessionOptions, SessionOutcome,
 };
 use std::path::PathBuf;
 use tokio::runtime::Runtime;
@@ -66,6 +67,18 @@ struct RunArgs {
     #[arg(long, default_value_t = 8)]
     qdrant_concurrency: usize,
 
+    /// Emit trace output alongside the session summary.
+    #[arg(long)]
+    explain: bool,
+
+    /// Output format used when `--explain` is provided.
+    #[arg(long, value_enum, default_value_t = ExplainFormat::Markdown)]
+    explain_format: ExplainFormat,
+
+    /// Directory to persist `trace.json` (defaults to `data/traces`).
+    #[arg(long)]
+    trace_dir: Option<PathBuf>,
+
     /// Use Postgres-backed session storage (falls back to in-memory if omitted).
     #[cfg(feature = "postgres-session")]
     #[arg(long, env = "DATABASE_URL")]
@@ -89,6 +102,18 @@ struct ResumeArgs {
     /// Maximum concurrent Qdrant operations.
     #[arg(long, default_value_t = 8)]
     qdrant_concurrency: usize,
+
+    /// Emit trace output alongside the session summary when resuming.
+    #[arg(long)]
+    explain: bool,
+
+    /// Output format used when `--explain` is provided.
+    #[arg(long, value_enum, default_value_t = ExplainFormat::Markdown)]
+    explain_format: ExplainFormat,
+
+    /// Directory to persist `trace.json` (defaults to `data/traces`).
+    #[arg(long)]
+    trace_dir: Option<PathBuf>,
 
     /// Use Postgres-backed session storage (falls back to in-memory if omitted).
     #[cfg(feature = "postgres-session")]
@@ -123,6 +148,31 @@ struct IngestArgs {
     qdrant_concurrency: usize,
 }
 
+#[derive(Copy, Clone, Debug, ValueEnum)]
+enum ExplainFormat {
+    Markdown,
+    Mermaid,
+    Graphviz,
+}
+
+impl ExplainFormat {
+    fn render(self, outcome: &SessionOutcome) -> Option<String> {
+        match self {
+            ExplainFormat::Markdown => outcome.explain_markdown(),
+            ExplainFormat::Mermaid => outcome.explain_mermaid(),
+            ExplainFormat::Graphviz => outcome.explain_graphviz(),
+        }
+    }
+
+    fn fence(self) -> Option<&'static str> {
+        match self {
+            ExplainFormat::Markdown => None,
+            ExplainFormat::Mermaid => Some("mermaid"),
+            ExplainFormat::Graphviz => Some("dot"),
+        }
+    }
+}
+
 fn main() -> Result<()> {
     let env_filter = EnvFilter::try_from_default_env()
         .unwrap_or_else(|_| EnvFilter::new("info,deepresearch_core=info"));
@@ -152,13 +202,13 @@ async fn run_command(args: RunArgs) -> Result<()> {
 
     let mut options = SessionOptions::new(&args.query);
 
-    if let Some(session_id) = args.session {
+    if let Some(session_id) = args.session.as_deref() {
         options = options.with_session_id(session_id);
     }
 
     #[cfg(feature = "postgres-session")]
-    if let Some(url) = args.database_url {
-        options = options.with_postgres_storage(url);
+    if let Some(ref url) = args.database_url {
+        options = options.with_postgres_storage(url.clone());
     }
 
     #[cfg(not(feature = "qdrant-retriever"))]
@@ -166,27 +216,62 @@ async fn run_command(args: RunArgs) -> Result<()> {
         warn!("qdrant retriever feature not enabled; falling back to stub retrieval");
     }
 
-    if let Some(qdrant_url) = args.qdrant_url {
+    if let Some(ref qdrant_url) = args.qdrant_url {
         options = options.with_qdrant_retriever(
-            qdrant_url,
-            args.qdrant_collection,
+            qdrant_url.clone(),
+            args.qdrant_collection.clone(),
             args.qdrant_concurrency,
         );
     }
 
-    let summary = run_research_session_with_options(options).await?;
-    println!("{}", summary);
+    let trace_requested = args.explain || args.trace_dir.is_some();
+    if let Some(dir) = args.trace_dir.as_ref() {
+        options = options.with_trace_output_dir(dir.clone());
+    } else if trace_requested {
+        options = options.enable_trace();
+    }
+
+    let outcome = run_research_session_with_report(options).await?;
+    println!("{}", outcome.summary);
+
+    if args.explain {
+        match args.explain_format.render(&outcome) {
+            Some(rendered) => {
+                println!();
+                if let Some(fence) = args.explain_format.fence() {
+                    println!("```{}", fence);
+                    println!("{}", rendered);
+                    println!("```");
+                } else {
+                    println!("{}", rendered);
+                }
+            }
+            None => {
+                println!();
+                println!("(no trace events captured)");
+            }
+        }
+    }
+
+    if trace_requested {
+        println!();
+        match outcome.trace_path {
+            Some(ref path) => println!("Trace saved to {}", path.display()),
+            None => println!("Trace not generated (no events captured)."),
+        }
+    }
+
     Ok(())
 }
 
 async fn resume_command(args: ResumeArgs) -> Result<()> {
     info!(session = %args.session, "resuming DeepResearch session");
 
-    let mut options = ResumeOptions::new(args.session);
+    let mut options = ResumeOptions::new(args.session.clone());
 
     #[cfg(feature = "postgres-session")]
-    if let Some(url) = args.database_url {
-        options = options.with_postgres_storage(url);
+    if let Some(ref url) = args.database_url {
+        options = options.with_postgres_storage(url.clone());
     }
 
     #[cfg(not(feature = "qdrant-retriever"))]
@@ -194,13 +279,54 @@ async fn resume_command(args: ResumeArgs) -> Result<()> {
         warn!("qdrant retriever feature not enabled; falling back to stub retrieval");
     }
 
-    if let Some(url) = args.qdrant_url {
-        options =
-            options.with_qdrant_retriever(url, args.qdrant_collection, args.qdrant_concurrency);
+    if let Some(ref url) = args.qdrant_url {
+        options = options.with_qdrant_retriever(
+            url.clone(),
+            args.qdrant_collection.clone(),
+            args.qdrant_concurrency,
+        );
     }
 
-    let summary = resume_research_session(options).await?;
-    println!("{}", summary);
+    let trace_requested = args.explain || args.trace_dir.is_some();
+
+    if trace_requested {
+        if let Some(dir) = args.trace_dir.as_ref() {
+            options = options.with_trace_output_dir(dir.clone());
+        } else {
+            options = options.enable_trace();
+        }
+
+        let outcome = resume_research_session_with_report(options).await?;
+        println!("{}", outcome.summary);
+
+        match args.explain_format.render(&outcome) {
+            Some(rendered) if args.explain => {
+                println!();
+                if let Some(fence) = args.explain_format.fence() {
+                    println!("```{}", fence);
+                    println!("{}", rendered);
+                    println!("```");
+                } else {
+                    println!("{}", rendered);
+                }
+            }
+            None if args.explain => {
+                println!();
+                println!("(no trace events captured)");
+            }
+            _ => {}
+        }
+
+        println!();
+        match outcome.trace_path {
+            Some(ref path) => println!("Trace saved to {}", path.display()),
+            None => println!("Trace not generated (no events captured)."),
+        }
+    } else {
+        let summary = resume_research_session(options).await?;
+        println!("{}", summary);
+    }
+
     Ok(())
 }
 

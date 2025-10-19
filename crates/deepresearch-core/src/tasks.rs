@@ -5,6 +5,7 @@ use tokio::time::{sleep, Duration};
 use tracing::{debug, info, instrument, warn};
 
 use crate::memory::{DynRetriever, RetrievedDocument};
+use crate::trace::TraceCollector;
 
 #[derive(Debug, Clone)]
 pub struct FactCheckSettings {
@@ -21,6 +22,16 @@ impl Default for FactCheckSettings {
             timeout_ms: 120,
         }
     }
+}
+
+async fn record_trace(context: &Context, task_id: &str, message: impl Into<String>) {
+    if !context.get::<bool>("trace.enabled").await.unwrap_or(false) {
+        return;
+    }
+
+    let mut collector: TraceCollector = context.get("trace.collector").await.unwrap_or_default();
+    collector.record(task_id, message);
+    context.set("trace.collector", &collector).await;
 }
 
 /// Utilities shared across tasks.
@@ -109,6 +120,17 @@ impl Task for ResearchTask {
             "research task populated context"
         );
 
+        record_trace(
+            &context,
+            self.id(),
+            format!(
+                "captured {} findings ({} sources)",
+                findings.len(),
+                sources.len()
+            ),
+        )
+        .await;
+
         Ok(TaskResult::new(
             Some(format!("Research completed for \"{}\"", query)),
             NextAction::ContinueAndExecute,
@@ -181,6 +203,17 @@ impl Task for FactCheckTask {
             "fact-check task completed"
         );
 
+        record_trace(
+            &context,
+            self.id(),
+            format!(
+                "confidence {:.2} ({} verified)",
+                confidence,
+                verified_sources.len()
+            ),
+        )
+        .await;
+
         Ok(TaskResult::new(
             Some("Fact-check completed".to_string()),
             NextAction::ContinueAndExecute,
@@ -235,6 +268,13 @@ impl Task for AnalystTask {
             "analyst produced structured summary"
         );
 
+        record_trace(
+            &context,
+            self.id(),
+            format!("highlight: {}", structured.highlight),
+        )
+        .await;
+
         Ok(TaskResult::new(
             Some("Analyst prepared synthesis".to_string()),
             NextAction::ContinueAndExecute,
@@ -281,6 +321,21 @@ impl Task for CriticTask {
             fact_confidence = fact_confidence,
             "critic evaluated analysis"
         );
+
+        record_trace(
+            &context,
+            self.id(),
+            format!(
+                "verdict: {} (fact {:.2})",
+                if passes_confidence {
+                    "auto-approved"
+                } else {
+                    "manual review"
+                },
+                fact_confidence
+            ),
+        )
+        .await;
 
         let sources_line = if analysis.sources.is_empty() {
             String::from("(none)")
@@ -387,6 +442,8 @@ impl Task for FinalizeTask {
 
         info!(confident, "finalize task completed");
 
+        record_trace(&context, self.id(), "final summary emitted").await;
+
         Ok(TaskResult::new(Some(summary), NextAction::End))
     }
 }
@@ -410,6 +467,8 @@ impl Task for ManualReviewTask {
         context.set("final.requires_manual", true).await;
 
         info!("manual review required");
+
+        record_trace(&context, self.id(), "manual review requested").await;
 
         Ok(TaskResult::new(Some(summary), NextAction::End))
     }

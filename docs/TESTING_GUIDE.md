@@ -25,6 +25,7 @@ Milestones 1–4 cover the core GraphFlow workflow (Researcher → Analyst → C
 | Branching Integration | Manual-review path triggers | `cargo test --offline -p deepresearch-core manual_review_branch_triggers` |
 | Resume Integration | Resume existing session returns summary | `cargo test --offline -p deepresearch-core resume_session_returns_summary` |
 | Retrieval Ingestion | Index docs into Qdrant | `cargo run -F qdrant-retriever -p deepresearch-cli ingest --session demo --path ./docs --qdrant-url http://localhost:6334` |
+| Explainability | CLI `--explain` prints reasoning summary and writes trace | `cargo run --offline -p deepresearch-cli run --session test --explain` |
 | Evaluation Metrics | Aggregate fact-check logs | `cargo test -p deepresearch-core eval::tests::evaluation_harness_aggregates_confidence` |
 
 ---
@@ -55,6 +56,7 @@ docker exec -it <container> psql -U deepresearch -d deepresearch -c "SELECT 1;"
 2. Inspect logs (set `RUST_LOG=info`) to confirm each task executes in order.
 3. Verify `factcheck.confidence` and `factcheck.passed` appear in the output (and call the evaluator on captured logs when doing manual QA).
 4. Verify `critique.confident` toggles when you edit task logic (e.g., make Analyst omit sources).
+5. Run the CLI with `--explain` and confirm both the rendered reasoning summary and the persisted `data/traces/<session>.json` payload.
 
 ---
 

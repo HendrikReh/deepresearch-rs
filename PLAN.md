@@ -46,9 +46,9 @@ This plan tracks the new graph-first implementation. Update the checkboxes and a
 - [x] Provide nightly evaluation harness that reads log outputs and aggregates accuracy metrics.
 
 ### M6 — Explainability & Trace Serialization
-- [ ] Emit `graph_flow` events into a TraceCollector and persist `trace.json` per session.
-- [ ] Generate reasoning graph summaries for CLI `--explain` and API responses.
-- [ ] Document trace schema and add tooling to render GraphViz/Mermaid.
+- [x] Emit `graph_flow` events into a TraceCollector and persist `trace.json` per session.
+- [x] Generate reasoning graph summaries for CLI `--explain` and API responses.
+- [x] Document trace schema and add tooling to render GraphViz/Mermaid.
 
 ### M7 — Interfaces (CLI & API)
 - [ ] Flesh out CLI commands (`query`, `ingest`, `eval`, `explain`, `resume`, `purge`) with structured output.

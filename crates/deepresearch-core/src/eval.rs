@@ -85,12 +85,11 @@ mod tests {
     use super::*;
     use std::fs::File;
     use std::io::{BufWriter, Write};
-    use std::path::PathBuf;
     use uuid::Uuid;
 
     #[test]
     fn evaluation_harness_aggregates_confidence() {
-        let mut path = PathBuf::from(std::env::temp_dir());
+        let mut path = std::env::temp_dir();
         path.push(format!("deepresearch-eval-{}.log", Uuid::new_v4()));
         let mut writer = BufWriter::new(File::create(&path).expect("temp file"));
         writeln!(

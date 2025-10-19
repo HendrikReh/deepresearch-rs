@@ -59,6 +59,28 @@ DATABASE_URL=postgres://deepresearch:deepresearch@localhost:5432/deepresearch \
 
 The CLI prints the critic verdict, analyst summary, key insight, and enumerated sources.
 
+### Explainability Output (`--explain`)
+
+Use the built-in explainability flags to capture task-level traces and render reasoning graphs:
+
+```bash
+# Markdown summary (default)
+cargo run --offline -p deepresearch-cli run --explain --query "How are sodium-ion batteries tracking?"
+
+# Mermaid graph (wraps output in ```mermaid fences)
+cargo run --offline -p deepresearch-cli run \
+  --explain \
+  --explain-format mermaid \
+  --trace-dir data/custom-traces \
+  --query "Map critical minerals policy responses"
+```
+
+- `--explain` enables the trace collector, prints the formatted summary, and persists `trace.json` per session (defaults to `data/traces/<session>.json`).
+- `--explain-format` accepts `markdown`, `mermaid`, or `graphviz`, matching the helpers on `SessionOutcome`.
+- `--trace-dir` overrides the output directory; the folder is created on demand.
+
+Each persisted file is an array of `TraceEvent` objects with `task_id`, `message`, and `timestamp_ms`. These events feed into `TraceSummary::render_mermaid()` / `render_graphviz()` for downstream visualization.
+
 ---
 
 ## 4. Enable Hybrid Retrieval (FastEmbed + Qdrant)

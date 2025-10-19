@@ -5,17 +5,22 @@ use crate::tasks::{
     AnalystTask, CriticTask, FactCheckSettings, FactCheckTask, FinalizeTask, ManualReviewTask,
     ResearchTask,
 };
+use crate::trace::{persist_trace, TraceCollector, TraceEvent, TraceSummary};
 use anyhow::{anyhow, Result};
 use graph_flow::{
     ExecutionStatus, FlowRunner, GraphBuilder, InMemorySessionStorage, Session, SessionStorage,
     Task,
 };
 use serde_json::Value;
+use std::path::PathBuf;
 use std::sync::Arc;
+use tracing::warn;
 use uuid::Uuid;
 
 #[cfg(feature = "postgres-session")]
 use graph_flow::storage_postgres::PostgresSessionStorage;
+
+const DEFAULT_TRACE_DIR: &str = "data/traces";
 
 /// Bundle of the default tasks used in the DeepResearch workflow.
 #[derive(Clone)]
@@ -39,6 +44,85 @@ impl BaseGraphTasks {
             manual_review: Arc::new(ManualReviewTask),
         }
     }
+}
+
+#[derive(Debug, Clone)]
+pub struct SessionOutcome {
+    pub session_id: String,
+    pub summary: String,
+    pub trace_events: Vec<TraceEvent>,
+    pub trace_summary: TraceSummary,
+    pub trace_path: Option<PathBuf>,
+}
+
+impl SessionOutcome {
+    pub fn explain_markdown(&self) -> Option<String> {
+        if self.trace_events.is_empty() {
+            None
+        } else {
+            Some(self.trace_summary.render_markdown())
+        }
+    }
+
+    pub fn explain_mermaid(&self) -> Option<String> {
+        if self.trace_events.is_empty() {
+            None
+        } else {
+            Some(self.trace_summary.render_mermaid())
+        }
+    }
+
+    pub fn explain_graphviz(&self) -> Option<String> {
+        if self.trace_events.is_empty() {
+            None
+        } else {
+            Some(self.trace_summary.render_graphviz())
+        }
+    }
+}
+
+fn build_outcome(
+    session: &Session,
+    session_id: &str,
+    trace_output_dir: Option<&PathBuf>,
+) -> Result<SessionOutcome> {
+    let summary = extract_final_summary(session);
+
+    let trace_enabled = session
+        .context
+        .get_sync::<bool>("trace.enabled")
+        .unwrap_or(false);
+
+    let collector = session
+        .context
+        .get_sync::<TraceCollector>("trace.collector")
+        .unwrap_or_else(|| {
+            let legacy: Vec<TraceEvent> =
+                session.context.get_sync("trace.events").unwrap_or_default();
+            TraceCollector::from_events(legacy)
+        });
+
+    let events = collector.into_events();
+    let trace_summary = TraceSummary::from_events(&events);
+
+    let mut trace_path = None;
+    if trace_enabled && !events.is_empty() {
+        let dir = trace_output_dir
+            .cloned()
+            .unwrap_or_else(|| PathBuf::from(DEFAULT_TRACE_DIR));
+        match persist_trace(&dir, session_id, &events) {
+            Ok(path) => trace_path = Some(path),
+            Err(err) => warn!(%session_id, error = %err, "failed to persist trace to disk"),
+        }
+    }
+
+    Ok(SessionOutcome {
+        session_id: session_id.to_string(),
+        summary,
+        trace_events: events,
+        trace_summary,
+        trace_path,
+    })
 }
 
 /// Hook for callers to mutate the graph before default wiring occurs.
@@ -185,6 +269,8 @@ pub struct SessionOptions<'a> {
     pub storage: StorageChoice,
     pub retriever: RetrieverChoice,
     pub fact_check_settings: FactCheckSettings,
+    pub trace_enabled: bool,
+    pub trace_output_dir: Option<PathBuf>,
 }
 
 impl<'a> SessionOptions<'a> {
@@ -197,6 +283,8 @@ impl<'a> SessionOptions<'a> {
             storage: StorageChoice::InMemory,
             retriever: RetrieverChoice::default(),
             fact_check_settings: FactCheckSettings::default(),
+            trace_enabled: false,
+            trace_output_dir: None,
         }
     }
 
@@ -250,6 +338,17 @@ impl<'a> SessionOptions<'a> {
         self.retriever = RetrieverChoice::qdrant(url, collection, concurrency_limit);
         self
     }
+
+    pub fn enable_trace(mut self) -> Self {
+        self.trace_enabled = true;
+        self
+    }
+
+    pub fn with_trace_output_dir(mut self, dir: impl Into<PathBuf>) -> Self {
+        self.trace_enabled = true;
+        self.trace_output_dir = Some(dir.into());
+        self
+    }
 }
 
 fn extract_final_summary(session: &Session) -> String {
@@ -259,13 +358,10 @@ fn extract_final_summary(session: &Session) -> String {
         .unwrap_or_else(|| "No final summary recorded".to_string())
 }
 
-/// Run the research workflow end-to-end for the provided query using default settings.
-pub async fn run_research_session(query: &str) -> Result<String> {
-    run_research_session_with_options(SessionOptions::new(query)).await
-}
-
-/// Run the research workflow with custom options (session ID, storage, graph customisation, seeded context).
-pub async fn run_research_session_with_options(options: SessionOptions<'_>) -> Result<String> {
+/// Run the research workflow end-to-end with a detailed outcome (summary + trace).
+pub async fn run_research_session_with_report(
+    options: SessionOptions<'_>,
+) -> Result<SessionOutcome> {
     let retriever = build_retriever(&options.retriever).await?;
     let (graph, tasks) = build_graph(
         options.customize_graph.as_deref(),
@@ -286,6 +382,13 @@ pub async fn run_research_session_with_options(options: SessionOptions<'_>) -> R
     for (key, value) in options.initial_context.iter() {
         session.context.set(key, value.clone()).await;
     }
+    if options.trace_enabled {
+        session.context.set("trace.enabled", true).await;
+        session
+            .context
+            .set("trace.collector", TraceCollector::new())
+            .await;
+    }
 
     storage
         .save(session)
@@ -295,7 +398,21 @@ pub async fn run_research_session_with_options(options: SessionOptions<'_>) -> R
     execute_until_complete(&runner, &session_id).await?;
 
     let session = load_session(&storage, &session_id).await?;
-    Ok(extract_final_summary(&session))
+    build_outcome(&session, &session_id, options.trace_output_dir.as_ref())
+}
+
+/// Run the research workflow end-to-end for the provided query using default settings.
+pub async fn run_research_session(query: &str) -> Result<String> {
+    run_research_session_with_report(SessionOptions::new(query))
+        .await
+        .map(|outcome| outcome.summary)
+}
+
+/// Run the research workflow with custom options (session ID, storage, graph customisation, seeded context).
+pub async fn run_research_session_with_options(options: SessionOptions<'_>) -> Result<String> {
+    run_research_session_with_report(options)
+        .await
+        .map(|outcome| outcome.summary)
 }
 
 async fn execute_until_complete(runner: &FlowRunner, session_id: &str) -> Result<()> {
@@ -329,6 +446,8 @@ pub struct ResumeOptions {
     pub storage: StorageChoice,
     pub retriever: RetrieverChoice,
     pub fact_check_settings: FactCheckSettings,
+    pub trace_enabled: bool,
+    pub trace_output_dir: Option<PathBuf>,
 }
 
 impl ResumeOptions {
@@ -339,6 +458,8 @@ impl ResumeOptions {
             storage: StorageChoice::InMemory,
             retriever: RetrieverChoice::default(),
             fact_check_settings: FactCheckSettings::default(),
+            trace_enabled: false,
+            trace_output_dir: None,
         }
     }
 
@@ -382,10 +503,21 @@ impl ResumeOptions {
         self.retriever = RetrieverChoice::qdrant(url, collection, concurrency_limit);
         self
     }
+
+    pub fn enable_trace(mut self) -> Self {
+        self.trace_enabled = true;
+        self
+    }
+
+    pub fn with_trace_output_dir(mut self, dir: impl Into<PathBuf>) -> Self {
+        self.trace_enabled = true;
+        self.trace_output_dir = Some(dir.into());
+        self
+    }
 }
 
-/// Resume a previously started session and return the latest summary.
-pub async fn resume_research_session(options: ResumeOptions) -> Result<String> {
+/// Resume a previously started session and return a detailed outcome.
+pub async fn resume_research_session_with_report(options: ResumeOptions) -> Result<SessionOutcome> {
     let retriever = build_retriever(&options.retriever).await?;
     let (graph, _tasks) = build_graph(
         options.customize_graph.as_deref(),
@@ -395,13 +527,44 @@ pub async fn resume_research_session(options: ResumeOptions) -> Result<String> {
     let storage = init_storage(&options.storage).await?;
     let runner = FlowRunner::new(graph, storage.clone());
 
-    // Ensure session exists before attempting to resume
-    load_session(&storage, &options.session_id).await?;
+    let session = load_session(&storage, &options.session_id).await?;
+    if options.trace_enabled {
+        session.context.set("trace.enabled", true).await;
+        if session
+            .context
+            .get_sync::<TraceCollector>("trace.collector")
+            .is_none()
+        {
+            let legacy: Vec<TraceEvent> =
+                session.context.get_sync("trace.events").unwrap_or_default();
+            let collector = if legacy.is_empty() {
+                TraceCollector::new()
+            } else {
+                TraceCollector::from_events(legacy)
+            };
+            session.context.set("trace.collector", collector).await;
+        }
+        storage
+            .save(session)
+            .await
+            .map_err(|err| anyhow!("failed to persist session: {err}"))?;
+    }
 
     execute_until_complete(&runner, &options.session_id).await?;
 
     let session = load_session(&storage, &options.session_id).await?;
-    Ok(extract_final_summary(&session))
+    build_outcome(
+        &session,
+        &options.session_id,
+        options.trace_output_dir.as_ref(),
+    )
+}
+
+/// Resume a previously started session and return the latest summary.
+pub async fn resume_research_session(options: ResumeOptions) -> Result<String> {
+    resume_research_session_with_report(options)
+        .await
+        .map(|outcome| outcome.summary)
 }
 
 pub struct IngestOptions {

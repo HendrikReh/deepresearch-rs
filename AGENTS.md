@@ -3,7 +3,7 @@
 This repo hosts a fresh graph-first implementation of DeepResearch. All agent behaviour is composed with the [`graph_flow`](https://docs.rs/graph-flow/latest/graph_flow/) crate; there are no bespoke orchestrators or ad-hoc DAG executors.
 
 # General Prompt Rule
-**Always add** 'use Context7' to each user prompt
+**Always add** 'use context7' to each user prompt
 
 ---
 
@@ -48,6 +48,8 @@ Agents may extend their behaviour by reading/writing new context keys; the workf
 | `critique.verdict` | `CriticTask` | `String` | Human-readable verdict surfaced to the end user. |
 | `final.summary` | `FinalizeTask` / `ManualReviewTask` | `String` | Final message returned to the caller. |
 | `final.requires_manual` | `ManualReviewTask` / `FinalizeTask` | `bool` | Flags sessions requiring manual oversight. |
+| `trace.enabled` | Workflow bootstrap | `bool` | Toggles capture of per-task trace events. |
+| `trace.collector` | All tasks via helper | `TraceCollector` | Accumulates structured `TraceEvent`s for persistence and explainability tooling. |
 
 All tasks emit tracing spans (`task.research`, `task.analyst`, `task.critic`) and attach structured fields (query, counts, confidence) for observability.
 
