@@ -127,6 +127,11 @@ This plan tracks the new graph-first implementation. Update the checkboxes and a
 - [ ] Ensure security/privacy posture carries over to new components (auth, rate limiting, PII redaction).
 - [ ] Keep `AGENTS.md` and context-key registry in sync with new tasks and explainability fields.
 
+### Immediate Follow-Ups
+- [ ] Document the GUI managed-container deployment playbook (build pipeline, env vars, monitoring hooks).
+- [ ] Draft the Python 3.13 service contract covering API surface, timeout limits, and security model; publish in docs.
+- [ ] Provide docker-compose overrides that launch the GUI and Python service together for local full-stack testing.
+
 #### Resolved Decisions
 - GUI ships as a standalone `deepresearch-gui` crate/binary.
 - Optimize the initial GUI build for managed container deployments.
