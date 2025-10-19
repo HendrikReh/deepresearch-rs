@@ -30,6 +30,7 @@ struct AppState {
     retriever: RetrieverChoice,
     trace_dir: PathBuf,
     session_permits: Arc<Semaphore>,
+    max_sessions: usize,
 }
 
 #[tokio::main]
@@ -77,9 +78,11 @@ async fn main() -> Result<()> {
         retriever,
         trace_dir,
         session_permits,
+        max_sessions: session_limit,
     };
 
     let app = Router::new()
+        .route("/health", get(handle_health))
         .route("/query", post(handle_query))
         .route("/session/:id", get(handle_session))
         .route("/ingest", post(handle_ingest))
@@ -218,6 +221,46 @@ struct SessionPayload {
     explanation: Option<String>,
     explanation_format: Option<String>,
     trace_events: Vec<TraceEvent>,
+}
+
+#[derive(Debug, Serialize)]
+struct CapacityReport {
+    max_sessions: usize,
+    available_sessions: usize,
+    active_sessions: usize,
+}
+
+#[derive(Debug, Serialize)]
+struct HealthResponse {
+    status: &'static str,
+    capacity: CapacityReport,
+    retrieval_mode: &'static str,
+}
+
+fn capacity_report(state: &AppState) -> CapacityReport {
+    let available = state.session_permits.available_permits();
+    let active = state.max_sessions.saturating_sub(available);
+    CapacityReport {
+        max_sessions: state.max_sessions,
+        available_sessions: available,
+        active_sessions: active,
+    }
+}
+
+fn retrieval_mode(retriever: &RetrieverChoice) -> &'static str {
+    match retriever {
+        RetrieverChoice::Stub => "stub",
+        RetrieverChoice::Qdrant { .. } => "qdrant",
+    }
+}
+
+async fn handle_health(State(state): State<AppState>) -> ApiResult<Json<HealthResponse>> {
+    let report = capacity_report(&state);
+    Ok(Json(HealthResponse {
+        status: "ok",
+        capacity: report,
+        retrieval_mode: retrieval_mode(&state.retriever),
+    }))
 }
 
 #[derive(Debug, Deserialize)]
@@ -410,6 +453,7 @@ mod tests {
             retriever: RetrieverChoice::default(),
             trace_dir: PathBuf::from("data/traces"),
             session_permits: Arc::new(Semaphore::new(1)),
+            max_sessions: 1,
         };
 
         let permit = acquire_session_permit(&state).expect("first permit should succeed");

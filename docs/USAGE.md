@@ -67,9 +67,15 @@ cargo run --offline -p deepresearch-cli eval data/logs/demo.jsonl --format json
 # Purge a session from Postgres storage (requires the docker-compose stack)
 DATABASE_URL=postgres://deepresearch:deepresearch@localhost:5432/deepresearch \
   cargo run --offline -F postgres-session -p deepresearch-cli purge <SESSION_ID>
+
+# Benchmark session throughput at a given concurrency
+cargo run --offline -p deepresearch-cli bench "Stress-test battery policy query" \
+  --sessions 24 \
+  --concurrency 6 \
+  --format json
 ```
 
-Every command supports `--format text|json`; text mode prints a human-readable summary, while JSON mode returns a structured payload (`session_id`, `summary`, `trace_path`, and any explanation block).
+Every command supports `--format text|json`; text mode prints a human-readable summary, while JSON mode returns a structured payload (bench responses report latency stats alongside success/failure counts).
 
 ### Explainability Output (`--explain`)
 
@@ -195,6 +201,7 @@ export DEEPRESEARCH_MAX_CONCURRENT_SESSIONS=5
 
 | Method | Path | Description |
 |--------|------|-------------|
+| `GET` | `/health` | Returns capacity counters (max, available, active) and retrieval mode. |
 | `POST` | `/query` | Runs a research session and returns the summary + optional explanation. |
 | `GET` | `/session/:id` | Fetches the latest session report without mutating state. |
 | `POST` | `/ingest` | Indexes documents for the configured retriever (Qdrant optional). |
@@ -202,6 +209,9 @@ export DEEPRESEARCH_MAX_CONCURRENT_SESSIONS=5
 ### Sample Requests
 
 ```bash
+# Check current capacity and retriever mode
+curl -s http://localhost:8080/health
+
 # Run a session with an embedded markdown explanation
 echo '{"query":"Assess regional battery incentives","explain":true}' \
   | curl -s http://localhost:8080/query -H 'content-type: application/json' -d @-

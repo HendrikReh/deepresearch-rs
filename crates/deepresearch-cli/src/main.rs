@@ -10,10 +10,11 @@ use deepresearch_core::{IngestDocument, IngestOptions, RetrieverChoice};
 use serde::Serialize;
 #[cfg(feature = "qdrant-retriever")]
 use std::path::Path;
-use std::path::PathBuf;
-use tokio::runtime::Runtime;
+use std::{path::PathBuf, sync::Arc};
+use tokio::{runtime::Runtime, sync::Semaphore, task::JoinSet, time::Instant};
 use tracing::{info, warn};
 use tracing_subscriber::EnvFilter;
+use uuid::Uuid;
 
 #[cfg(feature = "qdrant-retriever")]
 use anyhow::Context;
@@ -51,6 +52,8 @@ enum Command {
     Eval(EvalArgs),
     /// Delete a session from the configured storage backend.
     Purge(PurgeArgs),
+    /// Run synthetic load to benchmark session throughput.
+    Bench(BenchArgs),
 }
 
 #[derive(Copy, Clone, Debug, ValueEnum, Default)]
@@ -161,6 +164,70 @@ impl RenderText for EvalResponse {
     }
 }
 
+#[derive(Serialize)]
+struct BenchFailure {
+    session_id: String,
+    error: String,
+}
+
+#[derive(Serialize)]
+struct BenchResponse {
+    prompt: String,
+    sessions: usize,
+    concurrency: usize,
+    success_count: usize,
+    failure_count: usize,
+    total_duration_ms: f64,
+    avg_latency_ms: Option<f64>,
+    p95_latency_ms: Option<f64>,
+    min_latency_ms: Option<f64>,
+    max_latency_ms: Option<f64>,
+    failures: Vec<BenchFailure>,
+}
+
+impl RenderText for BenchResponse {
+    fn render_text(&self) -> String {
+        let mut lines = vec![format!(
+            "sessions: {} succeeded / {} failed (concurrency {})",
+            self.success_count, self.failure_count, self.concurrency
+        )];
+
+        if let Some(avg) = self.avg_latency_ms {
+            let p95 = self
+                .p95_latency_ms
+                .map(|v| format!("{v:.1}"))
+                .unwrap_or_else(|| "n/a".to_string());
+            let min = self
+                .min_latency_ms
+                .map(|v| format!("{v:.1}"))
+                .unwrap_or_else(|| "n/a".to_string());
+            let max = self
+                .max_latency_ms
+                .map(|v| format!("{v:.1}"))
+                .unwrap_or_else(|| "n/a".to_string());
+            lines.push(format!(
+                "latency avg {avg:.1} ms (p95 {p95} ms, min {min} ms, max {max} ms)"
+            ));
+        } else {
+            lines.push("latency statistics unavailable (no successful runs)".to_string());
+        }
+
+        lines.push(format!("total elapsed {:.1} ms", self.total_duration_ms));
+
+        if !self.failures.is_empty() {
+            let joined = self
+                .failures
+                .iter()
+                .map(|failure| format!("{}: {}", failure.session_id, failure.error))
+                .collect::<Vec<_>>()
+                .join("\n  ");
+            lines.push(format!("failures:\n  {joined}"));
+        }
+
+        lines.join("\n")
+    }
+}
+
 #[cfg(feature = "qdrant-retriever")]
 #[derive(Serialize)]
 struct IngestResponse {
@@ -256,6 +323,37 @@ struct QueryArgs {
     #[cfg(feature = "postgres-session")]
     #[arg(long, env = "DATABASE_URL")]
     database_url: Option<String>,
+}
+
+#[derive(Args, Debug)]
+struct BenchArgs {
+    /// Natural-language prompt to run during load testing.
+    #[arg(value_name = "PROMPT")]
+    prompt: String,
+
+    /// Number of sessions to execute.
+    #[arg(long, default_value_t = 10)]
+    sessions: usize,
+
+    /// Maximum concurrent sessions to run.
+    #[arg(long, default_value_t = 4)]
+    concurrency: usize,
+
+    /// Optional Qdrant endpoint to enable hybrid retrieval.
+    #[arg(long)]
+    qdrant_url: Option<String>,
+
+    /// Qdrant collection name (defaults to `deepresearch`).
+    #[arg(long, default_value = "deepresearch")]
+    qdrant_collection: String,
+
+    /// Maximum concurrent Qdrant operations per session.
+    #[arg(long, default_value_t = 8)]
+    qdrant_concurrency: usize,
+
+    /// Output format (text or JSON).
+    #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
+    format: OutputFormat,
 }
 
 #[derive(Args, Debug)]
@@ -412,6 +510,7 @@ fn main() -> Result<()> {
             Command::Ingest(args) => ingest_command(args).await?,
             Command::Eval(args) => eval_command(args).await?,
             Command::Purge(args) => purge_command(args).await?,
+            Command::Bench(args) => bench_command(args).await?,
         }
         Ok::<(), anyhow::Error>(())
     })?;
@@ -674,6 +773,131 @@ async fn purge_command(args: PurgeArgs) -> Result<()> {
         session_id,
         deleted,
     };
+    emit_output(args.format, &response)
+}
+
+struct BenchResult {
+    session_id: String,
+    elapsed_ms: f64,
+    success: bool,
+    error: Option<String>,
+}
+
+async fn bench_command(args: BenchArgs) -> Result<()> {
+    if args.sessions == 0 {
+        anyhow::bail!("sessions must be greater than zero");
+    }
+
+    let concurrency = args.concurrency.max(1);
+    let semaphore = Arc::new(Semaphore::new(concurrency));
+    let mut tasks = JoinSet::new();
+    let base_session = format!("bench-{}", Uuid::new_v4());
+    let overall_start = Instant::now();
+
+    for idx in 0..args.sessions {
+        let prompt = args.prompt.clone();
+        let session_id = format!("{}-{}", base_session, idx);
+        let semaphore_clone = semaphore.clone();
+        let qdrant_url = args.qdrant_url.clone();
+        let qdrant_collection = args.qdrant_collection.clone();
+        let qdrant_concurrency = args.qdrant_concurrency;
+
+        tasks.spawn(async move {
+            let permit = semaphore_clone
+                .acquire_owned()
+                .await
+                .expect("semaphore closed");
+
+            let mut options = SessionOptions::new(&prompt).with_session_id(session_id.clone());
+            if let Some(url) = qdrant_url {
+                options = options.with_qdrant_retriever(url, qdrant_collection, qdrant_concurrency);
+            }
+
+            let start = Instant::now();
+            let outcome = run_research_session_with_report(options).await;
+            drop(permit);
+
+            match outcome {
+                Ok(_) => BenchResult {
+                    session_id,
+                    elapsed_ms: start.elapsed().as_secs_f64() * 1000.0,
+                    success: true,
+                    error: None,
+                },
+                Err(err) => BenchResult {
+                    session_id,
+                    elapsed_ms: start.elapsed().as_secs_f64() * 1000.0,
+                    success: false,
+                    error: Some(err.to_string()),
+                },
+            }
+        });
+    }
+
+    let mut results = Vec::with_capacity(args.sessions);
+    while let Some(res) = tasks.join_next().await {
+        match res {
+            Ok(result) => results.push(result),
+            Err(join_err) => results.push(BenchResult {
+                session_id: format!("join-error-{}", Uuid::new_v4()),
+                elapsed_ms: 0.0,
+                success: false,
+                error: Some(join_err.to_string()),
+            }),
+        }
+    }
+
+    let total_duration_ms = overall_start.elapsed().as_secs_f64() * 1000.0;
+    let mut success_latencies: Vec<f64> = results
+        .iter()
+        .filter(|r| r.success)
+        .map(|r| r.elapsed_ms)
+        .collect();
+    success_latencies.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+
+    let success_count = success_latencies.len();
+    let failure_count = args.sessions - success_count;
+    let avg_latency_ms = if success_count > 0 {
+        Some(success_latencies.iter().sum::<f64>() / success_count as f64)
+    } else {
+        None
+    };
+    let p95_latency_ms = if success_count > 0 {
+        let rank = ((success_latencies.len() as f64) * 0.95).ceil() as usize;
+        let idx = rank.saturating_sub(1).min(success_latencies.len() - 1);
+        Some(success_latencies[idx])
+    } else {
+        None
+    };
+    let min_latency_ms = success_latencies.first().copied();
+    let max_latency_ms = success_latencies.last().copied();
+
+    let failures = results
+        .iter()
+        .filter(|r| !r.success)
+        .map(|r| BenchFailure {
+            session_id: r.session_id.clone(),
+            error: r
+                .error
+                .clone()
+                .unwrap_or_else(|| "unknown error".to_string()),
+        })
+        .collect();
+
+    let response = BenchResponse {
+        prompt: args.prompt,
+        sessions: args.sessions,
+        concurrency,
+        success_count,
+        failure_count,
+        total_duration_ms,
+        avg_latency_ms,
+        p95_latency_ms,
+        min_latency_ms,
+        max_latency_ms,
+        failures,
+    };
+
     emit_output(args.format, &response)
 }
 
