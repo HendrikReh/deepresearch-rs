@@ -1,7 +1,7 @@
 # DeepResearch
 
 [![CI](https://github.com/HendrikReh/deepresearch-rs/actions/workflows/ci.yml/badge.svg)](https://github.com/your-org/deepresearch-rs/actions/workflows/ci.yml)
-[![Version](https://img.shields.io/badge/version-0.1.9-informational.svg)](https://github.com/your-org/deepresearch-rs)
+[![Version](https://img.shields.io/badge/version-0.2.0-informational.svg)](https://github.com/your-org/deepresearch-rs)
 [![Rust Edition](https://img.shields.io/badge/Rust-2024-blue.svg)](https://www.rust-lang.org/)
 [![OpenAI](https://img.shields.io/badge/OpenAI-Integration-brightgreen.svg)](https://openai.com)
 [![Collaboration](https://img.shields.io/badge/Collaboration-Welcome-orange.svg)](https://github.com/your-org/deepresearch-rs/contribute)
