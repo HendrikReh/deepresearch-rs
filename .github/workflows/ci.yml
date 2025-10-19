@@ -34,5 +34,38 @@ jobs:
       - name: Clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
 
-      - name: Tests
-        run: cargo test --workspace
+      - name: Unit & integration tests
+        run: cargo test --workspace --all-targets -- --nocapture
+
+      - name: Snapshot regression guard
+        run: cargo test --offline -p deepresearch-core finalize_summary_snapshot -- --nocapture
+
+      - name: CLI bench latency check
+        env:
+          CARGO_TERM_COLOR: always
+        run: |
+          cargo run --offline -p deepresearch-cli bench "CI bench" --sessions 8 --concurrency 4 --format json > bench.json
+          cat bench.json
+          AVG=$(jq '.avg_latency_ms // 0' bench.json)
+          P95=$(jq '.p95_latency_ms // 0' bench.json)
+          FAIL=$(jq '.failure_count // 0' bench.json)
+          echo "Average latency: $AVG ms"
+          echo "P95 latency: $P95 ms"
+          echo "Failure count: $FAIL"
+          if (( $(echo "$AVG > 150" | bc -l) )); then
+            echo "Average latency exceeds 150 ms" >&2; exit 1; fi
+          if (( $(echo "$P95 > 240" | bc -l) )); then
+            echo "P95 latency exceeds 240 ms" >&2; exit 1; fi
+          if [ "$FAIL" -ne 0 ]; then
+            echo "Benchmark recorded failures" >&2; exit 1; fi
+
+      - name: API health smoke
+        run: |
+          cargo run --offline -p deepresearch-api &
+          SERVER_PID=$!
+          sleep 2
+          curl -s http://127.0.0.1:8080/health | jq .
+          curl -s http://127.0.0.1:8080/query \
+            -H 'content-type: application/json' \
+            -d '{"query":"CI API smoke","explain":false}' | jq .summary
+          kill $SERVER_PID
