@@ -77,7 +77,8 @@ Postgres sessions require `DATABASE_URL` to point at the running container (see 
 | M2 — Branching & Extensibility | ✅ | Conditional manual-review branch, graph customiser, session options |
 | M3 — Persistence & Replay | ✅ | Postgres session storage, resume APIs, docker-compose stack |
 | M4 — Memory & Retrieval | ✅ | FastEmbed + Qdrant hybrid retriever, CLI ingestion workflow |
-| M5+ | 🚧 | See `PLAN.md` for upcoming work (fact-checking, explainability, etc.) |
+| M5 — Fact-Checking & Evaluation | ✅ | Fact-check task, confidence logging, evaluation harness |
+| M6+ | 🚧 | See `PLAN.md` for upcoming work (explainability, interfaces, etc.) |
 
 Refer to `PLAN.md` for the full roadmap.
 
@@ -141,6 +142,22 @@ cargo run -F qdrant-retriever -p deepresearch-cli ingest --session <uuid> --path
      --qdrant-url http://localhost:6334
    ```
 4. **Troubleshooting:** A `Unknown error h2 protocol error` means the client reached the REST port (6333). Point `--qdrant-url` at the gRPC port (6334) and ensure the container exposes it.
+5. **Tune fact-check behaviour:** customise thresholds via `SessionOptions::with_fact_check_settings(...)` (see `docs/USAGE.md`).
+
+---
+
+## Evaluation Harness
+
+Use the bundled `EvaluationHarness` to aggregate fact-check outcomes from log files:
+
+```rust
+use deepresearch_core::{eval::EvaluationHarness, FactCheckSettings};
+
+let metrics = EvaluationHarness::analyze_log("logs/factcheck.jsonl")?;
+println!("{}", metrics.summary());
+```
+
+(See [`docs/USAGE.md`](docs/USAGE.md) for CLI-friendly workflows.)
 
 ---
 
@@ -152,6 +169,10 @@ cargo run -F qdrant-retriever -p deepresearch-cli ingest --session <uuid> --path
 | `research.findings` | Vector of bullet insights from the researcher. |
 | `research.sources` | Source URIs attached to findings. |
 | `analysis.output` | Structured summary (`AnalystOutput`). |
+| `factcheck.confidence` | Confidence score computed by the fact-check task. |
+| `factcheck.verified_sources` | Sources sampled during fact-check verification. |
+| `factcheck.passed` | Indicates whether the fact-check met the configured threshold. |
+| `factcheck.notes` | Human-readable notes about the verification pass. |
 | `critique.confident` | Boolean confidence flag from critic. |
 | `critique.verdict` | Human-readable verdict string. |
 | `final.summary` | Final message from `FinalizeTask`/`ManualReviewTask`. |

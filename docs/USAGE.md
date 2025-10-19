@@ -89,7 +89,45 @@ The CLI prints the critic verdict, analyst summary, key insight, and enumerated 
 
 ---
 
-## 5. Troubleshooting
+## 5. Configure Fact-Check Behaviour
+
+The fact-check task runs after the analyst and before the critic. Tweak its behaviour when constructing options:
+
+```rust
+use deepresearch_core::{FactCheckSettings, SessionOptions};
+
+let options = SessionOptions::new("Energy storage resilience")
+    .with_fact_check_settings(FactCheckSettings {
+        min_confidence: 0.85,
+        verification_count: 5,
+        timeout_ms: 150,
+    });
+```
+
+- `min_confidence` — minimum confidence required to avoid manual review.
+- `verification_count` — how many sources to sample.
+- `timeout_ms` — simulated wait before completing the fact-check (useful when modelling external calls).
+
+The task stores results under `factcheck.*` context keys (`confidence`, `verified_sources`, `passed`, `notes`) for downstream reporting.
+
+---
+
+## 6. Evaluation Harness
+
+Analyse JSONL logs to track nightly fact-check metrics:
+
+```rust
+use deepresearch_core::EvaluationHarness;
+
+let metrics = EvaluationHarness::analyze_log("logs/factcheck.jsonl")?;
+println!("{}", metrics.summary());
+```
+
+Entries with malformed JSON are skipped (emitting a `debug!` log). Failures are recorded by session ID.
+
+---
+
+## 7. Troubleshooting
 
 | Symptom | Likely Cause | Fix |
 |---------|--------------|-----|
@@ -101,7 +139,7 @@ The CLI prints the critic verdict, analyst summary, key insight, and enumerated 
 
 ---
 
-## 6. Clean-up
+## 8. Clean-up
 
 ```bash
 # Stop containers
@@ -115,4 +153,3 @@ rm -rf .fastembed_cache
 ```
 
 With the retrieval layer active, the Researcher task will pull real documents from Qdrant, and the critic summary will enumerate the ingested sources. Refer back to `docs/TESTING_GUIDE.md` for verification steps and `AGENTS.md` for deeper architectural context.
-

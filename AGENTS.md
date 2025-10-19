@@ -107,11 +107,17 @@ Add new tasks by implementing `graph_flow::Task` and registering them in `build_
 - Enable Qdrant + FastEmbed by wiring `SessionOptions::with_qdrant_retriever(url, collection, concurrency)` (and the matching `ResumeOptions`).
 - Documents are ingested via `ingest_documents` or the CLI (`deepresearch-cli ingest --session <id> --path <docs> --qdrant-url http://localhost:6334` — gRPC endpoint).
 - `HybridRetriever` stores vectors in Qdrant (dense cosine similarity) and constrains load with a semaphore.
+- `FactCheckTask` sits between Analyst and Critic; configure it via `FactCheckSettings` (min confidence, verification attempts, simulated timeout).
 
 ```rust
 let summary = run_research_session_with_options(
     SessionOptions::new(query)
         .with_qdrant_retriever("http://localhost:6334", "deepresearch", 8)
+        .with_fact_check_settings(FactCheckSettings {
+            min_confidence: 0.8,
+            verification_count: 5,
+            timeout_ms: 150,
+        })
         .with_session_id(session_id.clone()),
 ).await?;
 
@@ -134,6 +140,7 @@ ingest_documents(IngestOptions {
 - **Parallelism:** Wrap child tasks with `graph_flow::FanOutTask` (see upstream examples) if you require concurrent retrieval.  
 - **Persistence:** Replace `InMemorySessionStorage` with the `PostgresSessionStorage` from the crate when durability is required.  
 - **Ingestion:** Use `deepresearch-cli ingest --session <id> --path <docs> --qdrant-url http://localhost:6334` to index local files into Qdrant (ensure port 6334 is exposed with `QDRANT__SERVICE__GRPC_PORT=6334`).
+- **Evaluation:** Analyse nightly logs with `EvaluationHarness::analyze_log(...)` to track fact-check confidence and failures.
 
 Document any new context keys or task IDs in this file to keep downstream contributors aligned.
 

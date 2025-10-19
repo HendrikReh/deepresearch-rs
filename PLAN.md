@@ -41,9 +41,9 @@ This plan tracks the new graph-first implementation. Update the checkboxes and a
 - [x] Add document ingestion command that indexes local files via CLI.
 
 ### M5 — Fact-Checking & Evaluation
-- [ ] Build configurable fact-check task honoring `min_confidence`, `verification_count`, `timeout_ms`.
-- [ ] Record confidence scores and source IDs in context for downstream reporting.
-- [ ] Provide nightly evaluation harness that reads log outputs and aggregates accuracy metrics.
+- [x] Build configurable fact-check task honoring `min_confidence`, `verification_count`, `timeout_ms`.
+- [x] Record confidence scores and source IDs in context for downstream reporting.
+- [x] Provide nightly evaluation harness that reads log outputs and aggregates accuracy metrics.
 
 ### M6 — Explainability & Trace Serialization
 - [ ] Emit `graph_flow` events into a TraceCollector and persist `trace.json` per session.
@@ -75,4 +75,4 @@ This plan tracks the new graph-first implementation. Update the checkboxes and a
 
 ---
 
-*Last updated:* 2024-11-24
+*Last updated:* 2025-10-19

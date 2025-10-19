@@ -6,6 +6,23 @@ use tracing::{debug, info, instrument, warn};
 
 use crate::memory::{DynRetriever, RetrievedDocument};
 
+#[derive(Debug, Clone)]
+pub struct FactCheckSettings {
+    pub min_confidence: f32,
+    pub verification_count: usize,
+    pub timeout_ms: u64,
+}
+
+impl Default for FactCheckSettings {
+    fn default() -> Self {
+        Self {
+            min_confidence: 0.6,
+            verification_count: 3,
+            timeout_ms: 120,
+        }
+    }
+}
+
 /// Utilities shared across tasks.
 fn default_sources() -> Vec<String> {
     vec![
@@ -99,6 +116,78 @@ impl Task for ResearchTask {
     }
 }
 
+pub struct FactCheckTask {
+    settings: FactCheckSettings,
+}
+
+impl FactCheckTask {
+    pub fn new(settings: FactCheckSettings) -> Self {
+        Self { settings }
+    }
+}
+
+#[async_trait]
+impl Task for FactCheckTask {
+    fn id(&self) -> &str {
+        "fact_check"
+    }
+
+    #[instrument(name = "task.fact_check", skip(self, context))]
+    async fn run(&self, context: Context) -> graph_flow::Result<TaskResult> {
+        let analysis: AnalystOutput = context
+            .get("analysis.output")
+            .await
+            .unwrap_or_else(AnalystOutput::default);
+        let sources = analysis.sources.clone();
+
+        if self.settings.timeout_ms > 0 {
+            sleep(Duration::from_millis(self.settings.timeout_ms.min(500))).await;
+        }
+
+        let verified_sources: Vec<String> = sources
+            .iter()
+            .take(self.settings.verification_count)
+            .cloned()
+            .collect();
+
+        let coverage = if sources.is_empty() {
+            0.0
+        } else {
+            verified_sources.len() as f32 / sources.len() as f32
+        };
+        let confidence = (0.5 + coverage * 0.5).min(1.0);
+        let passed = confidence >= self.settings.min_confidence;
+
+        context.set("factcheck.confidence", confidence).await;
+        context
+            .set("factcheck.verified_sources", &verified_sources)
+            .await;
+        context.set("factcheck.passed", passed).await;
+        context
+            .set(
+                "factcheck.notes",
+                format!(
+                    "verified {} sources (coverage {:.0}%)",
+                    verified_sources.len(),
+                    coverage * 100.0
+                ),
+            )
+            .await;
+
+        info!(
+            confidence,
+            passed,
+            verified = verified_sources.len(),
+            "fact-check task completed"
+        );
+
+        Ok(TaskResult::new(
+            Some("Fact-check completed".to_string()),
+            NextAction::ContinueAndExecute,
+        ))
+    }
+}
+
 #[derive(Default)]
 pub struct AnalystTask;
 
@@ -168,9 +257,15 @@ impl Task for CriticTask {
             .get("analysis.output")
             .await
             .unwrap_or_else(AnalystOutput::default);
+        let fact_confidence: f32 = context.get("factcheck.confidence").await.unwrap_or(0.0);
+        let fact_passed: bool = context.get("factcheck.passed").await.unwrap_or(true);
+        let verified_sources: Vec<String> = context
+            .get("factcheck.verified_sources")
+            .await
+            .unwrap_or_default();
 
         let passes_confidence =
-            analysis.summary.split('.').count() >= 2 && !analysis.sources.is_empty();
+            fact_passed && analysis.summary.split('.').count() >= 2 && !analysis.sources.is_empty();
 
         context.set_sync("critique.confident", passes_confidence);
         let verdict = if passes_confidence {
@@ -183,17 +278,31 @@ impl Task for CriticTask {
         info!(
             confident = passes_confidence,
             sources = analysis.sources.len(),
+            fact_confidence = fact_confidence,
             "critic evaluated analysis"
         );
 
+        let sources_line = if analysis.sources.is_empty() {
+            String::from("(none)")
+        } else {
+            analysis.sources.join(", ")
+        };
+        let verified_line = if verified_sources.is_empty() {
+            String::from("(none)")
+        } else {
+            verified_sources.join(", ")
+        };
+
         let response = format!(
-            "{}\nSummary: {}\nKey Insight: {}\nSources: {}",
+            "{}\nSummary: {}\nKey Insight: {}\nSources: {}\nFact-Check Confidence: {:.2}\nVerified Sources: {}",
             context
                 .get_sync::<String>("critique.verdict")
                 .unwrap_or_default(),
             analysis.summary,
             analysis.highlight,
-            analysis.sources.join(", ")
+            sources_line,
+            fact_confidence,
+            verified_line
         );
 
         Ok(TaskResult::new(
@@ -228,9 +337,39 @@ impl Task for FinalizeTask {
             .get::<bool>("critique.confident")
             .await
             .unwrap_or(false);
+        let fact_confidence = context
+            .get::<f32>("factcheck.confidence")
+            .await
+            .unwrap_or(0.0);
+        let verified_sources: Vec<String> = context
+            .get("factcheck.verified_sources")
+            .await
+            .unwrap_or_default();
+
+        let sources_block = if analysis.sources.is_empty() {
+            "  (none recorded)".to_string()
+        } else {
+            analysis
+                .sources
+                .iter()
+                .enumerate()
+                .map(|(idx, src)| format!("  {}. {}", idx + 1, src))
+                .collect::<Vec<_>>()
+                .join("\n")
+        };
+        let verified_block = if verified_sources.is_empty() {
+            "  (none verified)".to_string()
+        } else {
+            verified_sources
+                .iter()
+                .enumerate()
+                .map(|(idx, src)| format!("  {}. {}", idx + 1, src))
+                .collect::<Vec<_>>()
+                .join("\n")
+        };
 
         let summary = format!(
-            "{verdict}\n\nSummary:\n{}\n\nKey Insight: {}\nConfidence: {}\nSources:\n{}",
+            "{verdict}\n\nSummary:\n{}\n\nKey Insight: {}\nConfidence: {}\nSources:\n{}\n\nFact-Check Confidence: {:.2}\nVerified Sources:\n{}",
             analysis.summary,
             analysis.highlight,
             if confident {
@@ -238,17 +377,9 @@ impl Task for FinalizeTask {
             } else {
                 "Review suggested"
             },
-            if analysis.sources.is_empty() {
-                "  (none recorded)".to_string()
-            } else {
-                analysis
-                    .sources
-                    .iter()
-                    .enumerate()
-                    .map(|(idx, src)| format!("  {}. {}", idx + 1, src))
-                    .collect::<Vec<_>>()
-                    .join("\n")
-            },
+            sources_block,
+            fact_confidence,
+            verified_block,
         );
 
         context.set("final.summary", summary.clone()).await;

@@ -1,7 +1,10 @@
 #[cfg(feature = "qdrant-retriever")]
 use crate::memory::qdrant::{HybridRetriever, QdrantConfig};
 use crate::memory::{DynRetriever, IngestDocument, StubRetriever};
-use crate::tasks::{AnalystTask, CriticTask, FinalizeTask, ManualReviewTask, ResearchTask};
+use crate::tasks::{
+    AnalystTask, CriticTask, FactCheckSettings, FactCheckTask, FinalizeTask, ManualReviewTask,
+    ResearchTask,
+};
 use anyhow::{anyhow, Result};
 use graph_flow::{
     ExecutionStatus, FlowRunner, GraphBuilder, InMemorySessionStorage, Session, SessionStorage,
@@ -19,16 +22,18 @@ use graph_flow::storage_postgres::PostgresSessionStorage;
 pub struct BaseGraphTasks {
     pub research: Arc<ResearchTask>,
     pub analyst: Arc<AnalystTask>,
+    pub fact_check: Arc<FactCheckTask>,
     pub critic: Arc<CriticTask>,
     pub finalize: Arc<FinalizeTask>,
     pub manual_review: Arc<ManualReviewTask>,
 }
 
 impl BaseGraphTasks {
-    fn new(retriever: DynRetriever) -> Self {
+    fn new(retriever: DynRetriever, fact_settings: FactCheckSettings) -> Self {
         Self {
             research: Arc::new(ResearchTask::new(retriever)),
             analyst: Arc::new(AnalystTask),
+            fact_check: Arc::new(FactCheckTask::new(fact_settings)),
             critic: Arc::new(CriticTask),
             finalize: Arc::new(FinalizeTask),
             manual_review: Arc::new(ManualReviewTask),
@@ -89,12 +94,14 @@ impl StorageChoice {
 fn build_graph(
     customizer: Option<&GraphCustomizer>,
     retriever: DynRetriever,
+    fact_settings: FactCheckSettings,
 ) -> (Arc<graph_flow::Graph>, BaseGraphTasks) {
-    let tasks = BaseGraphTasks::new(retriever);
+    let tasks = BaseGraphTasks::new(retriever, fact_settings);
 
     let builder = GraphBuilder::new("deepresearch_workflow")
         .add_task(tasks.research.clone())
         .add_task(tasks.analyst.clone())
+        .add_task(tasks.fact_check.clone())
         .add_task(tasks.critic.clone())
         .add_task(tasks.finalize.clone())
         .add_task(tasks.manual_review.clone());
@@ -107,7 +114,8 @@ fn build_graph(
 
     let builder = builder
         .add_edge(tasks.research.id(), tasks.analyst.id())
-        .add_edge(tasks.analyst.id(), tasks.critic.id())
+        .add_edge(tasks.analyst.id(), tasks.fact_check.id())
+        .add_edge(tasks.fact_check.id(), tasks.critic.id())
         .add_conditional_edge(
             tasks.critic.id(),
             |ctx| ctx.get_sync::<bool>("critique.confident").unwrap_or(false),
@@ -176,6 +184,7 @@ pub struct SessionOptions<'a> {
     pub initial_context: Vec<(String, Value)>,
     pub storage: StorageChoice,
     pub retriever: RetrieverChoice,
+    pub fact_check_settings: FactCheckSettings,
 }
 
 impl<'a> SessionOptions<'a> {
@@ -187,6 +196,7 @@ impl<'a> SessionOptions<'a> {
             initial_context: Vec::new(),
             storage: StorageChoice::InMemory,
             retriever: RetrieverChoice::default(),
+            fact_check_settings: FactCheckSettings::default(),
         }
     }
 
@@ -202,6 +212,11 @@ impl<'a> SessionOptions<'a> {
 
     pub fn with_initial_context(mut self, key: impl Into<String>, value: Value) -> Self {
         self.initial_context.push((key.into(), value));
+        self
+    }
+
+    pub fn with_fact_check_settings(mut self, settings: FactCheckSettings) -> Self {
+        self.fact_check_settings = settings;
         self
     }
 
@@ -252,7 +267,11 @@ pub async fn run_research_session(query: &str) -> Result<String> {
 /// Run the research workflow with custom options (session ID, storage, graph customisation, seeded context).
 pub async fn run_research_session_with_options(options: SessionOptions<'_>) -> Result<String> {
     let retriever = build_retriever(&options.retriever).await?;
-    let (graph, tasks) = build_graph(options.customize_graph.as_deref(), retriever);
+    let (graph, tasks) = build_graph(
+        options.customize_graph.as_deref(),
+        retriever,
+        options.fact_check_settings.clone(),
+    );
     let storage = init_storage(&options.storage).await?;
     let runner = FlowRunner::new(graph, storage.clone());
 
@@ -309,6 +328,7 @@ pub struct ResumeOptions {
     pub customize_graph: Option<Box<GraphCustomizer>>,
     pub storage: StorageChoice,
     pub retriever: RetrieverChoice,
+    pub fact_check_settings: FactCheckSettings,
 }
 
 impl ResumeOptions {
@@ -318,6 +338,7 @@ impl ResumeOptions {
             customize_graph: None,
             storage: StorageChoice::InMemory,
             retriever: RetrieverChoice::default(),
+            fact_check_settings: FactCheckSettings::default(),
         }
     }
 
@@ -347,6 +368,11 @@ impl ResumeOptions {
         self
     }
 
+    pub fn with_fact_check_settings(mut self, settings: FactCheckSettings) -> Self {
+        self.fact_check_settings = settings;
+        self
+    }
+
     pub fn with_qdrant_retriever(
         mut self,
         url: impl Into<String>,
@@ -361,7 +387,11 @@ impl ResumeOptions {
 /// Resume a previously started session and return the latest summary.
 pub async fn resume_research_session(options: ResumeOptions) -> Result<String> {
     let retriever = build_retriever(&options.retriever).await?;
-    let (graph, _tasks) = build_graph(options.customize_graph.as_deref(), retriever);
+    let (graph, _tasks) = build_graph(
+        options.customize_graph.as_deref(),
+        retriever,
+        options.fact_check_settings.clone(),
+    );
     let storage = init_storage(&options.storage).await?;
     let runner = FlowRunner::new(graph, storage.clone());
 

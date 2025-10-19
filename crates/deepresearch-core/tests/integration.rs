@@ -1,9 +1,8 @@
-use async_trait::async_trait;
 use deepresearch_core::{
     resume_research_session, run_research_session, run_research_session_with_options,
-    BaseGraphTasks, ResumeOptions, SessionOptions,
+    FactCheckSettings, ResumeOptions, SessionOptions,
 };
-use graph_flow::{Context, GraphBuilder, InMemorySessionStorage, NextAction, Task, TaskResult};
+use graph_flow::InMemorySessionStorage;
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -23,35 +22,14 @@ async fn critic_verdict_is_non_empty() {
     );
 }
 
-struct WipeSourcesTask;
-
-#[async_trait]
-impl Task for WipeSourcesTask {
-    fn id(&self) -> &str {
-        "wipe_sources"
-    }
-
-    async fn run(&self, context: Context) -> graph_flow::Result<TaskResult> {
-        context.set("research.sources", Vec::<String>::new()).await;
-        Ok(TaskResult::new(None, NextAction::ContinueAndExecute))
-    }
-}
-
 #[tokio::test]
 async fn manual_review_branch_triggers() {
-    let wipe_task = Arc::new(WipeSourcesTask);
-
-    let customizer = Box::new(move |builder: GraphBuilder, base: &BaseGraphTasks| {
-        let task = wipe_task.clone();
-        let wipe_id = task.id().to_string();
-
-        builder
-            .add_task(task)
-            .add_edge(base.analyst.id(), wipe_id.as_str())
-            .add_edge(wipe_id.as_str(), base.critic.id())
-    });
-
-    let options = SessionOptions::new("Trigger manual review").with_customizer(customizer);
+    let options =
+        SessionOptions::new("Trigger manual review").with_fact_check_settings(FactCheckSettings {
+            min_confidence: 0.95,
+            verification_count: 0,
+            timeout_ms: 0,
+        });
 
     let summary = run_research_session_with_options(options)
         .await
