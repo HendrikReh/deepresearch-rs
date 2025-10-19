@@ -5,11 +5,10 @@ use anyhow::{anyhow, Context};
 use async_trait::async_trait;
 use fastembed::TextEmbedding;
 use qdrant_client::qdrant::{
-    Condition, CreateCollectionBuilder, Distance, Filter, PointStruct, SearchPointsBuilder,
-    UpsertPointsBuilder, VectorParamsBuilder,
+    value::Kind as QValueKind, Condition, CreateCollectionBuilder, Distance, Filter, ListValue,
+    PointStruct, SearchPointsBuilder, UpsertPointsBuilder, Value as QValue, VectorParamsBuilder,
 };
-use qdrant_client::Qdrant;
-use serde_json::Value;
+use qdrant_client::{Payload, Qdrant};
 use tokio::sync::Semaphore;
 use tracing::{debug, info, warn};
 
@@ -127,26 +126,16 @@ fn lexical_boost(query_tokens: &HashSet<String>, doc_keywords: &[String]) -> f32
     }
 }
 
-fn payload_from_scored(
-    mut payload: qdrant_client::Payload,
-) -> (String, Option<String>, Vec<String>) {
-    let mut map: HashMap<String, Value> = payload.into();
+fn payload_from_scored(payload: Payload) -> (String, Option<String>, Vec<String>) {
+    let mut map: HashMap<String, QValue> = payload.into();
     let text = map
         .remove(KEY_TEXT)
-        .and_then(|value| value.as_str().map(|s| s.to_string()))
+        .and_then(value_as_string)
         .unwrap_or_default();
-    let source = map
-        .remove(KEY_SOURCE)
-        .and_then(|value| value.as_str().map(|s| s.to_string()));
+    let source = map.remove(KEY_SOURCE).and_then(value_as_string);
     let keywords = map
         .remove(KEY_KEYWORDS)
-        .and_then(|value| value.as_array().cloned())
-        .map(|values| {
-            values
-                .into_iter()
-                .filter_map(|value| value.as_str().map(|s| s.to_string()))
-                .collect()
-        })
+        .map(value_as_string_list)
         .unwrap_or_default();
 
     (text, source, keywords)
@@ -157,17 +146,67 @@ fn build_payload(
     text: &str,
     source: Option<&String>,
     keywords: Vec<String>,
-) -> anyhow::Result<qdrant_client::Payload> {
-    let payload = serde_json::json!({
-        KEY_SESSION: session_id,
-        KEY_TEXT: text,
-        KEY_SOURCE: source,
-        KEY_KEYWORDS: keywords,
-    });
+) -> anyhow::Result<Payload> {
+    let mut payload = Payload::default();
 
-    payload
-        .try_into()
-        .map_err(|err| anyhow!("failed to convert payload: {err}"))
+    payload.insert(
+        KEY_SESSION.to_string(),
+        QValue {
+            kind: Some(QValueKind::StringValue(session_id.to_string())),
+        },
+    );
+
+    payload.insert(
+        KEY_TEXT.to_string(),
+        QValue {
+            kind: Some(QValueKind::StringValue(text.to_string())),
+        },
+    );
+
+    if let Some(source) = source {
+        payload.insert(
+            KEY_SOURCE.to_string(),
+            QValue {
+                kind: Some(QValueKind::StringValue(source.clone())),
+            },
+        );
+    }
+
+    if !keywords.is_empty() {
+        let values = keywords
+            .into_iter()
+            .map(|keyword| QValue {
+                kind: Some(QValueKind::StringValue(keyword)),
+            })
+            .collect();
+
+        payload.insert(
+            KEY_KEYWORDS.to_string(),
+            QValue {
+                kind: Some(QValueKind::ListValue(ListValue { values })),
+            },
+        );
+    }
+
+    Ok(payload)
+}
+
+fn value_as_string(value: QValue) -> Option<String> {
+    match value.kind? {
+        QValueKind::StringValue(v) => Some(v),
+        _ => None,
+    }
+}
+
+fn value_as_string_list(value: QValue) -> Vec<String> {
+    match value.kind {
+        Some(QValueKind::ListValue(list)) => list
+            .values
+            .into_iter()
+            .filter_map(value_as_string)
+            .collect(),
+        _ => Vec::new(),
+    }
 }
 
 #[async_trait]
@@ -185,22 +224,26 @@ impl Retriever for HybridRetriever {
             .await
             .context("semaphore closed unexpectedly")?;
 
+        let query_owned = query.to_string();
         let dense_model = self.dense_model.clone();
-        let query_embedding = tokio::task::spawn_blocking(move || -> anyhow::Result<Vec<f32>> {
-            let mut model = dense_model
-                .lock()
-                .map_err(|_| anyhow!("embedding model poisoned"))?;
-            let embeddings = model
-                .embed(vec![query.to_string()], Some(1))
-                .map_err(|err| anyhow!("failed to embed query: {err}"))?;
-            embeddings
-                .into_iter()
-                .next()
-                .ok_or_else(|| anyhow!("embedding model returned empty result"))
+        let query_embedding = tokio::task::spawn_blocking({
+            let query_for_embed = query_owned.clone();
+            move || -> anyhow::Result<Vec<f32>> {
+                let mut model = dense_model
+                    .lock()
+                    .map_err(|_| anyhow!("embedding model poisoned"))?;
+                let embeddings = model
+                    .embed(vec![query_for_embed], Some(1))
+                    .map_err(|err| anyhow!("failed to embed query: {err}"))?;
+                embeddings
+                    .into_iter()
+                    .next()
+                    .ok_or_else(|| anyhow!("embedding model returned empty result"))
+            }
         })
         .await??;
 
-        let filter = Filter::all([Condition::matches(KEY_SESSION, session_id)]);
+        let filter = Filter::all([Condition::matches(KEY_SESSION, session_id.to_string())]);
 
         let search = self
             .client
@@ -212,13 +255,13 @@ impl Retriever for HybridRetriever {
             .await
             .map_err(|err| anyhow!("qdrant search failed: {err}"))?;
 
-        let query_tokens: HashSet<String> = tokenize(query).into_iter().collect();
+        let query_tokens: HashSet<String> = tokenize(&query_owned).into_iter().collect();
 
         let mut documents: Vec<RetrievedDocument> = search
             .result
             .into_iter()
             .map(|point| {
-                let payload = point.payload.clone().unwrap_or_default();
+                let payload = Payload::from(point.payload.clone());
                 let (text, source, keywords) = payload_from_scored(payload);
                 let lexical = lexical_boost(&query_tokens, &keywords);
                 RetrievedDocument {

@@ -1,7 +1,5 @@
 #[cfg(feature = "qdrant-retriever")]
-use crate::memory::qdrant::QdrantConfig;
-#[cfg(feature = "qdrant-retriever")]
-use crate::memory::HybridRetriever;
+use crate::memory::qdrant::{HybridRetriever, QdrantConfig};
 use crate::memory::{DynRetriever, IngestDocument, StubRetriever};
 use crate::tasks::{AnalystTask, CriticTask, FinalizeTask, ManualReviewTask, ResearchTask};
 use anyhow::{anyhow, Result};

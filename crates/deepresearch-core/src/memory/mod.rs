@@ -1,13 +1,12 @@
 #[cfg(feature = "qdrant-retriever")]
-mod qdrant;
+pub mod qdrant;
+#[cfg(feature = "qdrant-retriever")]
+pub use qdrant::{HybridRetriever, QdrantConfig};
 
 use std::sync::Arc;
 
 use async_trait::async_trait;
 use dashmap::DashMap;
-
-#[cfg(feature = "qdrant-retriever")]
-pub use qdrant::{HybridRetriever, QdrantConfig};
 
 #[derive(Debug, Clone)]
 pub struct RetrievedDocument {
