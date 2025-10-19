@@ -1,0 +1,17 @@
+---
+source: crates/deepresearch-core/tests/integration.rs
+expression: summary
+---
+Analysis passes automated checks
+
+Summary:
+Top insights: Automated placeholder insight. Additional manual review recommended.. Confidence supported by 1 sources.
+
+Key Insight: Automated placeholder insight. Additional manual review recommended.
+Confidence: High
+Sources:
+  1. stub://memory
+
+Fact-Check Confidence: 1.00
+Verified Sources:
+  1. stub://memory

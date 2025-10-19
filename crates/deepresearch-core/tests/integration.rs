@@ -3,6 +3,7 @@ use deepresearch_core::{
     FactCheckSettings, ResumeOptions, SessionOptions,
 };
 use graph_flow::InMemorySessionStorage;
+use insta::assert_snapshot;
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -62,4 +63,13 @@ async fn resume_session_returns_summary() {
             .expect("resume should succeed");
 
     assert!(resume_summary.contains("Analysis passes"));
+}
+
+#[tokio::test]
+async fn finalize_summary_snapshot() {
+    let summary = run_research_session("Snapshot regression baseline")
+        .await
+        .expect("workflow should succeed");
+
+    assert_snapshot!("finalize_summary_default", summary);
 }

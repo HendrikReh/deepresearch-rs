@@ -22,6 +22,7 @@ This guide consolidates recommended verification steps for the DeepResearch stac
 | Lint | `cargo clippy --workspace --all-targets -- -D warnings` | Ensures clean build |
 | Offline build smoke test | `cargo check --offline` | Catches missing workspace deps |
 | Full test suite | `cargo test --workspace --all-targets -- --nocapture` | Runs unit + integration + logging tests |
+| Snapshot regression | `cargo test --offline -p deepresearch-core finalize_summary_snapshot` | Guards finalize/critic output formatting (use `INSTA_UPDATE=always cargo test --offline -p deepresearch-core finalize_summary_snapshot` to refresh deliberately) |
 
 ---
 
@@ -112,13 +113,14 @@ This guide consolidates recommended verification steps for the DeepResearch stac
 5. Use `--explain` / `explain` subcommand to inspect reasoning trace and persisted trace file.
 6. Exercise API `/query`, `/session/:id`, `/ingest`, `/health` and check 429 throttling by exceeding `DEEPRESEARCH_MAX_CONCURRENT_SESSIONS`.
 7. Trigger `deepresearch-cli purge <SESSION>` and confirm session traces + logs deleted.
+8. Re-run the snapshot test (`cargo test --offline -p deepresearch-core finalize_summary_snapshot`) after modifying summary formatting to ensure expected output.
 
 ---
 
 ## 6. Future Automation Wishlist
 
 - [x] Async integration test ensuring `run_research_session` returns non-empty verdict
-- [ ] Snapshot tests for critic/finalize output to guard against formatting regressions
+- [x] Snapshot tests for critic/finalize output to guard against formatting regressions
 - [ ] Automated span assertion (verify key tracing spans emitted)
 - [ ] CI workflow running `cargo test --offline` and linting matrix
 
