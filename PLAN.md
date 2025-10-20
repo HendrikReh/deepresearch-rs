@@ -96,18 +96,18 @@ This plan tracks the new graph-first implementation. Update the checkboxes and a
 
 #### Backend & Infrastructure
 - [x] Scaffold the standalone `deepresearch-gui` crate with Axum routing, shared session orchestrator wiring, and Tailwind/Vite asset pipeline. *(Owner: Platform)*
-- [ ] Ship managed-container bootstrap: config loader, env-secret wiring, `use context7` prompt enforcement, health/readiness probes, and OpenTelemetry hooks. *(Owner: Platform)*
-- [ ] Publish container image + Helm chart draft; integrate with deployment playbook (Immediate Follow-Up #1). *(Owner: DevOps)*
+- [x] Ship managed-container bootstrap: config loader, env-secret wiring, `use context7` prompt enforcement, health/readiness probes, and OpenTelemetry hooks. *(Owner: Platform)*
+- [x] Publish container image + Helm chart draft; integrate with deployment playbook (Immediate Follow-Up #1). *(Owner: DevOps)*
 
 #### Frontend UX & Realtime Flows
 - [x] Build chat + evidence panels with SSE/WebSocket streaming, Markdown renderer parity, and context key surface mirroring CLI/API. *(Owner: Frontend)*
-- [ ] Provide initial reasoning graph canvas (static JSON viewer) wired to TraceCollector JSON endpoint to unblock M11 visualization upgrades. *(Owner: Frontend)*
-- [ ] Implement auth/session selector supporting in-memory & Postgres storage, capacity guardrails, and managed-container session namespace switching. *(Owner: Frontend + Platform)*
+- [x] Provide initial reasoning graph canvas (static JSON viewer) wired to TraceCollector JSON endpoint to unblock M11 visualization upgrades. *(Owner: Frontend)*
+- [x] Implement auth/session selector supporting in-memory & Postgres storage, capacity guardrails, and managed-container session namespace switching. *(Owner: Frontend + Platform)*
 
 #### Quality, Tooling & Documentation
-- [ ] Add smoke/integration tests for HTTP endpoints, WebSocket flow, and asset build checks; gate via CI. *(Owner: QA)*
+- [x] Add smoke/integration tests for HTTP endpoints, WebSocket flow, and asset build checks; gate via CI. *(Owner: QA)*
 - [x] Document local GUI iteration workflow (dev server, Tailwind watch, Docker override) and update onboarding guide. *(Owner: Docs)*
-- [ ] Define acceptance checklist covering end-to-end happy path, health probes, auth gating, and reporting to release readiness dashboard. *(Owner: QA + PM)*
+- [x] Define acceptance checklist covering end-to-end happy path, health probes, auth gating, and reporting to release readiness dashboard. *(Owner: QA + PM)*
 
 #### Dependencies & Coordination
 - **Prereqs:** Immediate Follow-Up #1 draft, storage feature flag parity, TraceCollector JSON endpoint finalized (from M11).
@@ -145,13 +145,12 @@ This plan tracks the new graph-first implementation. Update the checkboxes and a
 - [ ] Prepare release checklist including packaging, changelog, and deployment playbooks for GUI + Python services.
 
 ### Cross-Cutting Initiatives (v0.2)
-- [ ] Enforce the “use context7” prefix across CLI, API, and GUI prompts (validation + developer guidance).
 - [ ] Expand monitoring dashboards with GUI metrics, Python tool health, and tuning job status.
 - [ ] Ensure security/privacy posture carries over to new components (auth, rate limiting, PII redaction).
 - [ ] Keep `AGENTS.md` and context-key registry in sync with new tasks and explainability fields.
 
 ### Immediate Follow-Ups
-- [ ] Document the GUI managed-container deployment playbook (build pipeline, env vars, monitoring hooks).
+- [x] Document the GUI managed-container deployment playbook (build pipeline, env vars, monitoring hooks).
 - [ ] Draft the Python 3.13 service contract covering API surface, timeout limits, and security model; publish in docs.
 - [ ] Provide docker-compose overrides that launch the GUI and Python service together for local full-stack testing.
 

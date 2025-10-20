@@ -1,0 +1,27 @@
+[
+  {
+    "task_id": "researcher",
+    "message": "captured 1 findings (1 sources)",
+    "timestamp_ms": 1760941140536
+  },
+  {
+    "task_id": "analyst",
+    "message": "highlight: Automated placeholder insight. Additional manual review recommended.",
+    "timestamp_ms": 1760941140537
+  },
+  {
+    "task_id": "fact_check",
+    "message": "confidence 1.00 (1 verified)",
+    "timestamp_ms": 1760941140659
+  },
+  {
+    "task_id": "critic",
+    "message": "verdict: auto-approved (fact 1.00)",
+    "timestamp_ms": 1760941140659
+  },
+  {
+    "task_id": "finalize",
+    "message": "final summary emitted",
+    "timestamp_ms": 1760941140659
+  }
+]

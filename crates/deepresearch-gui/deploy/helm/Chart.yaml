@@ -1,0 +1,6 @@
+apiVersion: v2
+name: deepresearch-gui
+description: Axum GUI service for DeepResearch
+version: 0.2.0
+appVersion: 0.2.0
+type: application

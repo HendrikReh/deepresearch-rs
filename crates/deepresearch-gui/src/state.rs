@@ -1,10 +1,15 @@
-use crate::config::AppConfig;
+use crate::config::{AppConfig, StorageBackend};
+#[cfg(feature = "postgres-session")]
+use anyhow::Context;
 use anyhow::Result;
 use axum::response::sse::Event;
 use dashmap::DashMap;
 use deepresearch_core::{SessionOptions, SessionOutcome, run_research_session_with_report};
+#[cfg(feature = "postgres-session")]
+use graph_flow::storage_postgres::PostgresSessionStorage;
 use graph_flow::{InMemorySessionStorage, SessionStorage};
 use serde::Serialize;
+use serde_json::Value;
 use std::convert::Infallible;
 use std::path::PathBuf;
 use std::pin::Pin;
@@ -25,9 +30,25 @@ pub struct AppState {
 
 impl AppState {
     pub async fn try_new(config: &AppConfig) -> Result<Self> {
-        let storage: Arc<dyn SessionStorage> = Arc::new(InMemorySessionStorage::new());
-        let service =
-            SessionService::new(storage, config.max_concurrency, config.default_enable_trace);
+        let storage: Arc<dyn SessionStorage> = match &config.storage {
+            StorageBackend::InMemory => Arc::new(InMemorySessionStorage::new()),
+            #[cfg(feature = "postgres-session")]
+            StorageBackend::Postgres { url } => {
+                let storage = PostgresSessionStorage::connect(url)
+                    .await
+                    .with_context(|| {
+                        format!("failed to connect Postgres session storage at {url}")
+                    })?;
+                Arc::new(storage)
+            }
+        };
+
+        let service = SessionService::new(
+            storage,
+            config.max_concurrency,
+            config.default_enable_trace,
+            config.session_namespace.clone(),
+        );
 
         Ok(Self {
             session_service: Arc::new(service),
@@ -55,6 +76,10 @@ impl AppState {
     pub fn auth_token(&self) -> Option<Arc<String>> {
         self.auth_token.clone()
     }
+
+    pub fn metrics(&self) -> SessionMetrics {
+        self.session_service.metrics()
+    }
 }
 
 #[derive(Clone)]
@@ -64,6 +89,8 @@ pub struct SessionService {
     default_enable_trace: bool,
     sessions: Arc<DashMap<String, SessionRecord>>,
     streams: Arc<DashMap<String, broadcast::Sender<SessionEvent>>>,
+    max_concurrency: usize,
+    namespace: Option<String>,
 }
 
 impl SessionService {
@@ -71,6 +98,7 @@ impl SessionService {
         storage: Arc<dyn SessionStorage>,
         max_concurrency: usize,
         default_enable_trace: bool,
+        namespace: Option<String>,
     ) -> Self {
         Self {
             semaphore: Arc::new(Semaphore::new(max_concurrency.max(1))),
@@ -78,15 +106,13 @@ impl SessionService {
             default_enable_trace,
             sessions: Arc::new(DashMap::new()),
             streams: Arc::new(DashMap::new()),
+            max_concurrency: max_concurrency.max(1),
+            namespace,
         }
     }
 
     pub async fn start_session(&self, mut request: SessionRequest) -> Result<String> {
-        let session_id = request
-            .session_id
-            .take()
-            .unwrap_or_else(|| Uuid::new_v4().to_string());
-
+        let session_id = self.normalize_session_id(request.session_id.take());
         let prompt = ensure_context7_prefix(&request.query);
         let enable_trace = request.enable_trace.unwrap_or(self.default_enable_trace);
 
@@ -108,6 +134,7 @@ impl SessionService {
         let storage = self.storage.clone();
         let session_id_for_task = session_id.clone();
         let sender_for_task = sender.clone();
+        let namespace = self.namespace.clone();
 
         tokio::spawn(async move {
             let permit = match semaphore.acquire_owned().await {
@@ -133,6 +160,11 @@ impl SessionService {
 
             if enable_trace {
                 options = options.enable_trace();
+            }
+
+            if let Some(ns) = namespace.clone() {
+                options =
+                    options.with_initial_context("session.namespace", Value::String(ns.clone()));
             }
 
             let result = run_research_session_with_report(options).await;
@@ -238,6 +270,65 @@ impl SessionService {
             Box::pin(stream) as SseStream
         })
     }
+
+    pub fn list_sessions(&self) -> Vec<SessionStatus> {
+        self.sessions
+            .iter()
+            .map(|entry| {
+                let session_id = entry.key().clone();
+                match entry.value() {
+                    SessionRecord::Running => SessionStatus {
+                        session_id,
+                        state: SessionState::Running,
+                        summary: None,
+                        error: None,
+                        trace_available: false,
+                    },
+                    SessionRecord::Completed { outcome, .. } => SessionStatus {
+                        session_id,
+                        state: SessionState::Completed,
+                        summary: Some(outcome.summary.clone()),
+                        error: None,
+                        trace_available: !outcome.trace_events.is_empty(),
+                    },
+                    SessionRecord::Failed { error, .. } => SessionStatus {
+                        session_id,
+                        state: SessionState::Failed,
+                        summary: None,
+                        error: Some(error.clone()),
+                        trace_available: false,
+                    },
+                }
+            })
+            .collect()
+    }
+
+    pub fn metrics(&self) -> SessionMetrics {
+        let running_sessions = self
+            .sessions
+            .iter()
+            .filter(|entry| matches!(entry.value(), SessionRecord::Running))
+            .count();
+        SessionMetrics {
+            max_concurrency: self.max_concurrency,
+            available_permits: self.semaphore.available_permits(),
+            running_sessions,
+            total_sessions: self.sessions.len(),
+        }
+    }
+
+    fn normalize_session_id(&self, session_id: Option<String>) -> String {
+        let raw = session_id.unwrap_or_else(|| Uuid::new_v4().to_string());
+        if let Some(namespace) = &self.namespace {
+            if raw.starts_with(namespace) {
+                raw
+            } else {
+                format!("{namespace}::{raw}")
+            }
+        } else {
+            raw
+        }
+    }
 }
 
 pub type SseStream = Pin<Box<dyn Stream<Item = Result<Event, Infallible>> + Send>>;
@@ -272,6 +363,14 @@ pub struct SessionStatus {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
     pub trace_available: bool,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct SessionMetrics {
+    pub max_concurrency: usize,
+    pub available_permits: usize,
+    pub running_sessions: usize,
+    pub total_sessions: usize,
 }
 
 #[derive(Clone, Debug, Serialize)]

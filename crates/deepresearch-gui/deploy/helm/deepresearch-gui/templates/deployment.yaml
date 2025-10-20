@@ -1,0 +1,69 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "deepresearch-gui.fullname" . }}
+  labels:
+    app.kubernetes.io/name: {{ include "deepresearch-gui.name" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/version: {{ .Chart.AppVersion }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "deepresearch-gui.name" . }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "deepresearch-gui.name" . }}
+        app.kubernetes.io/instance: {{ .Release.Name }}
+      annotations:
+{{ toYaml .Values.podAnnotations | indent 8 }}
+    spec:
+      containers:
+        - name: gui
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - containerPort: {{ .Values.service.port }}
+              name: http
+          env:
+            - name: GUI_ENABLE_GUI
+              value: "{{ ternary "true" "false" .Values.env.guiEnable }}"
+            {{- if .Values.env.authToken }}
+            - name: GUI_AUTH_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "deepresearch-gui.fullname" . }}-secrets
+                  key: gui-auth-token
+            {{- end }}
+            {{- if eq .Values.env.storage "postgres" }}
+            - name: GUI_STORAGE
+              value: "postgres"
+            - name: GUI_POSTGRES_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "deepresearch-gui.fullname" . }}-secrets
+                  key: gui-postgres-url
+            {{- end }}
+            {{- if .Values.env.sessionNamespace }}
+            - name: GUI_SESSION_NAMESPACE
+              value: "{{ .Values.env.sessionNamespace }}"
+            {{- end }}
+            {{- if .Values.env.otelEndpoint }}
+            - name: GUI_OTEL_ENDPOINT
+              value: "{{ .Values.env.otelEndpoint }}"
+            {{- end }}
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources: {{- toYaml .Values.resources | nindent 12 }}

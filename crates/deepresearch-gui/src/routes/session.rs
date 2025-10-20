@@ -1,7 +1,8 @@
+use async_trait::async_trait;
 use axum::{
     Json, Router,
-    extract::{Path, State},
-    http::StatusCode,
+    extract::{FromRequestParts, Path},
+    http::{StatusCode, header, request::Parts},
     response::sse::{KeepAlive, Sse},
     routing::{get, post},
 };
@@ -9,7 +10,9 @@ use serde::{Deserialize, Serialize};
 use tracing::instrument;
 
 use crate::error::AppError;
-use crate::state::{AppState, SessionRequest, SessionState, SessionStatus, SseStream};
+use crate::state::{
+    AppState, SessionMetrics, SessionRequest, SessionState, SessionStatus, SseStream,
+};
 
 #[derive(Debug, Deserialize)]
 pub struct StartSessionRequest {
@@ -24,6 +27,7 @@ pub struct StartSessionRequest {
 pub struct StartSessionResponse {
     pub session_id: String,
     pub state: SessionState,
+    pub capacity: CapacitySnapshot,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub message: Option<String>,
 }
@@ -44,9 +48,34 @@ pub struct TraceResponse {
     pub explain_graphviz: Option<String>,
 }
 
+#[derive(Debug, Serialize)]
+pub struct CapacitySnapshot {
+    pub max_concurrency: usize,
+    pub available_permits: usize,
+    pub running_sessions: usize,
+    pub total_sessions: usize,
+}
+
+impl From<SessionMetrics> for CapacitySnapshot {
+    fn from(value: SessionMetrics) -> Self {
+        Self {
+            max_concurrency: value.max_concurrency,
+            available_permits: value.available_permits,
+            running_sessions: value.running_sessions,
+            total_sessions: value.total_sessions,
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
+pub struct ListSessionsResponse {
+    pub sessions: Vec<SessionStatus>,
+    pub capacity: CapacitySnapshot,
+}
+
 pub fn session_router() -> Router<AppState> {
     Router::new()
-        .route("/sessions", post(start_session))
+        .route("/sessions", post(start_session).get(list_sessions))
         .route("/sessions/:id", get(get_session))
         .route("/sessions/:id/trace", get(get_session_trace))
         .route("/sessions/:id/stream", get(stream_session))
@@ -54,7 +83,7 @@ pub fn session_router() -> Router<AppState> {
 
 #[instrument(skip_all, fields(session_id = %payload.session_id.as_deref().unwrap_or("new")))]
 async fn start_session(
-    State(state): State<AppState>,
+    GuardedState(state): GuardedState,
     Json(payload): Json<StartSessionRequest>,
 ) -> Result<(StatusCode, Json<StartSessionResponse>), AppError> {
     if payload.query.trim().is_empty() {
@@ -68,26 +97,24 @@ async fn start_session(
         .with_session_id(payload.session_id)
         .with_trace(payload.enable_trace);
 
-    let session_id = state
-        .session_service()
+    let service = state.session_service();
+    let session_id = service
         .start_session(request)
         .await
         .map_err(AppError::from)?;
 
-    let state_snapshot = state
-        .session_service()
-        .status(&session_id)
-        .unwrap_or(SessionStatus {
-            session_id: session_id.clone(),
-            state: SessionState::Running,
-            summary: None,
-            error: None,
-            trace_available: false,
-        });
+    let state_snapshot = service.status(&session_id).unwrap_or(SessionStatus {
+        session_id: session_id.clone(),
+        state: SessionState::Running,
+        summary: None,
+        error: None,
+        trace_available: false,
+    });
 
     let response = StartSessionResponse {
         session_id,
         state: state_snapshot.state,
+        capacity: service.metrics().into(),
         message: Some("session started".into()),
     };
 
@@ -95,7 +122,7 @@ async fn start_session(
 }
 
 async fn get_session(
-    State(state): State<AppState>,
+    GuardedState(state): GuardedState,
     Path(session_id): Path<String>,
 ) -> Result<Json<SessionStatus>, AppError> {
     match state.session_service().status(&session_id) {
@@ -105,7 +132,7 @@ async fn get_session(
 }
 
 async fn get_session_trace(
-    State(state): State<AppState>,
+    GuardedState(state): GuardedState,
     Path(session_id): Path<String>,
 ) -> Result<Json<TraceResponse>, AppError> {
     if let Some(outcome) = state.session_service().outcome(&session_id) {
@@ -135,11 +162,59 @@ async fn get_session_trace(
 }
 
 async fn stream_session(
-    State(state): State<AppState>,
+    GuardedState(state): GuardedState,
     Path(session_id): Path<String>,
 ) -> Result<Sse<SseStream>, AppError> {
     match state.session_service().event_stream(&session_id) {
         Some(stream) => Ok(Sse::new(stream).keep_alive(KeepAlive::new())),
         None => Err(AppError::new(StatusCode::NOT_FOUND, "session not found")),
+    }
+}
+
+async fn list_sessions(
+    GuardedState(state): GuardedState,
+) -> Result<Json<ListSessionsResponse>, AppError> {
+    let service = state.session_service();
+    let sessions = service.list_sessions();
+    let capacity = service.metrics().into();
+    Ok(Json(ListSessionsResponse { sessions, capacity }))
+}
+
+pub struct GuardedState(pub AppState);
+
+#[async_trait]
+impl FromRequestParts<AppState> for GuardedState {
+    type Rejection = AppError;
+
+    async fn from_request_parts(
+        parts: &mut Parts,
+        state: &AppState,
+    ) -> Result<Self, Self::Rejection> {
+        let app_state = state.clone();
+
+        if !app_state.gui_enabled() {
+            return Err(AppError::new(StatusCode::FORBIDDEN, "GUI disabled"));
+        }
+
+        if let Some(expected) = app_state.auth_token() {
+            let provided = parts
+                .headers
+                .get(header::AUTHORIZATION)
+                .and_then(|value| value.to_str().ok())
+                .and_then(|value| value.strip_prefix("Bearer "))
+                .map(str::trim);
+
+            match provided {
+                Some(token) if token == expected.as_str() => {}
+                _ => {
+                    return Err(AppError::new(
+                        StatusCode::UNAUTHORIZED,
+                        "invalid auth token",
+                    ));
+                }
+            }
+        }
+
+        Ok(GuardedState(app_state))
     }
 }

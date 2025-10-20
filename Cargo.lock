@@ -798,6 +798,7 @@ dependencies = [
  "axum-test",
  "dashmap",
  "deepresearch-core",
+ "futures",
  "graph-flow",
  "mime_guess",
  "serde",

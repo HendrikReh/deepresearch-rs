@@ -1,0 +1,22 @@
+image:
+  repository: deepresearch/gui
+  tag: "0.2.0"
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 8080
+
+resources: {}
+
+env:
+  guiEnable: true
+  authToken: ""
+  sessionNamespace: ""
+  storage: "inmemory" # options: inmemory | postgres
+  postgresUrl: ""
+  otelEndpoint: ""
+
+podAnnotations: {}
+
+replicaCount: 1

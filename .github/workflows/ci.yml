@@ -85,3 +85,6 @@ jobs:
             -H 'content-type: application/json' \
             -d '{"query":"CI API smoke","explain":false}' | jq .summary
           kill $SERVER_PID
+
+      - name: GUI stream smoke
+        run: cargo test --offline -p deepresearch-gui --test http -- --nocapture

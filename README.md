@@ -177,6 +177,8 @@ GUI configuration summary:
 | `GUI_LISTEN_ADDR` | `0.0.0.0:8080` | Listen address for the combined Axum server |
 | `GUI_MAX_CONCURRENCY` | Host CPU count | Maximum concurrent sessions the GUI may dispatch |
 
+A reference container build is available via `crates/deepresearch-gui/Dockerfile` (multi-stage Rust + Node). Kubernetes manifests can be templated from `deploy/helm/deepresearch-gui/`.
+
 > Tip: rerun `npm ci && npm run build` inside `crates/deepresearch-gui/web` whenever you modify the frontend so the Axum server serves fresh assets.
 
 ### Optional Data Services (Qdrant & Postgres)
@@ -220,7 +222,7 @@ See [`PLAN.md`](PLAN.md) for the detailed roadmap and dated notes.
 ---
 
 ## Testing
-
+ 
 `docs/TESTING_GUIDE.md` enumerates the full matrix. Common commands:
 
 ```bash
@@ -233,6 +235,8 @@ RUST_LOG=warn cargo run --offline -p deepresearch-cli bench "CI bench" --session
 ```
 
 Snapshot updates: run `INSTA_UPDATE=always cargo test --offline -p deepresearch-core finalize_summary_snapshot -- --nocapture` only when intentionally changing the baseline summary.
+
+See [`docs/GUI_ACCEPTANCE.md`](docs/GUI_ACCEPTANCE.md) for the end-to-end GUI acceptance checklist.
 
 ---
 

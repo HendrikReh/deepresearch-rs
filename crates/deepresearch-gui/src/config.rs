@@ -11,6 +11,18 @@ pub struct AppConfig {
     pub assets_dir: PathBuf,
     pub gui_enabled: bool,
     pub auth_token: Option<String>,
+    pub storage: StorageBackend,
+    pub session_namespace: Option<String>,
+    pub otel_endpoint: Option<String>,
+}
+
+#[derive(Clone, Debug)]
+pub enum StorageBackend {
+    InMemory,
+    #[cfg(feature = "postgres-session")]
+    Postgres {
+        url: String,
+    },
 }
 
 impl AppConfig {
@@ -60,6 +72,18 @@ impl AppConfig {
             .map(|value| value.trim().to_string())
             .filter(|value| !value.is_empty());
 
+        let storage = resolve_storage_backend()?;
+
+        let session_namespace = env::var("GUI_SESSION_NAMESPACE")
+            .ok()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+
+        let otel_endpoint = env::var("GUI_OTEL_ENDPOINT")
+            .ok()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+
         let gui_enabled = gui_enabled || auth_token.is_some();
 
         Ok(Self {
@@ -69,6 +93,9 @@ impl AppConfig {
             assets_dir,
             gui_enabled,
             auth_token,
+            storage,
+            session_namespace,
+            otel_endpoint,
         })
     }
 }
@@ -78,5 +105,24 @@ fn parse_bool(input: &str) -> Option<bool> {
         "1" | "true" | "yes" | "on" => Some(true),
         "0" | "false" | "no" | "off" => Some(false),
         _ => None,
+    }
+}
+
+fn resolve_storage_backend() -> Result<StorageBackend> {
+    match env::var("GUI_STORAGE").ok().as_deref() {
+        #[cfg(feature = "postgres-session")]
+        Some("postgres") => {
+            let url = env::var("GUI_POSTGRES_URL")
+                .or_else(|_| env::var("DATABASE_URL"))
+                .context(
+                    "GUI_POSTGRES_URL or DATABASE_URL must be set when GUI_STORAGE=postgres",
+                )?;
+            Ok(StorageBackend::Postgres { url })
+        }
+        #[cfg(not(feature = "postgres-session"))]
+        Some("postgres") => Err(anyhow::anyhow!(
+            "GUI built without postgres-session support; rebuild with --features postgres-session"
+        )),
+        _ => Ok(StorageBackend::InMemory),
     }
 }

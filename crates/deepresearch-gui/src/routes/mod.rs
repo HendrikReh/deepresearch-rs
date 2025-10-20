@@ -6,7 +6,6 @@ use axum::{
     body::Body,
     extract::State,
     http::{Request, StatusCode, header},
-    middleware::{self, Next},
     response::{IntoResponse, Response},
 };
 use health::health_router;
@@ -17,15 +16,9 @@ use tokio::fs::{self, canonicalize};
 use crate::state::AppState;
 
 pub fn build_router(state: AppState) -> Router {
-    let api_state = state.clone();
-    let api = session_router().route_layer(middleware::from_fn(move |req, next| {
-        let state = api_state.clone();
-        async move { require_auth(req, next, state).await }
-    }));
-
     Router::new()
         .nest("/health", health_router())
-        .nest("/api", api)
+        .nest("/api", session_router())
         .fallback(spa_fallback)
         .with_state(state)
 }
@@ -82,30 +75,4 @@ async fn is_safe_file(base: &Path, candidate: &Path) -> bool {
         return resolved.starts_with(base);
     }
     false
-}
-
-async fn require_auth(
-    req: Request<Body>,
-    next: Next,
-    state: AppState,
-) -> Result<Response, StatusCode> {
-    if !state.gui_enabled() {
-        return Err(StatusCode::FORBIDDEN);
-    }
-
-    if let Some(expected) = state.auth_token() {
-        let provided = req
-            .headers()
-            .get(header::AUTHORIZATION)
-            .and_then(|value| value.to_str().ok())
-            .and_then(|value| value.strip_prefix("Bearer "))
-            .map(str::trim);
-
-        match provided {
-            Some(token) if token == expected.as_str() => {}
-            _ => return Err(StatusCode::UNAUTHORIZED),
-        }
-    }
-
-    Ok(next.run(req).await)
 }

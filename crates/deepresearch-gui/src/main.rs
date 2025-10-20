@@ -1,21 +1,14 @@
-mod config;
-mod error;
-mod routes;
-mod state;
-mod telemetry;
-
 use anyhow::Result;
 use axum::Router;
-use state::AppState;
-use telemetry::init_tracing;
+use deepresearch_gui::{config, routes, state::AppState, telemetry::init_tracing};
 use tokio::net::TcpListener;
 use tracing::{error, info};
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    init_tracing();
-
     let config = config::AppConfig::from_env()?;
+    init_tracing(&config)?;
+
     let state = AppState::try_new(&config).await?;
 
     let app: Router = routes::build_router(state);

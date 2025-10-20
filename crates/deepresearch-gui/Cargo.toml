@@ -6,6 +6,10 @@ authors = ["DeepResearch Contributors"]
 description = "Axum-powered GUI service for DeepResearch"
 license = "GPL-3.0-or-later"
 
+[features]
+default = []
+postgres-session = ["deepresearch-core/postgres-session"]
+
 [dependencies]
 anyhow = { workspace = true }
 async-trait = { workspace = true }
@@ -23,6 +27,7 @@ tower-http = { version = "0.5", features = ["trace", "cors", "fs"] }
 tokio-stream = { version = "0.1", features = ["sync"] }
 uuid = { workspace = true }
 mime_guess = "2.0"
+futures = "0.3"
 
 [dev-dependencies]
 axum-test = "15"
