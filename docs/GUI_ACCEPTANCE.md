@@ -31,7 +31,7 @@ Use this checklist before merging GUI-affecting changes or promoting the v0.2 re
    - Restart the service and resume the session by selecting it from the directory.
 8. **Telemetry & Logs**
    - With `GUI_OTEL_ENDPOINT` unset, confirm standard structured logs appear.
-   - If exporting to an OTLP collector, verify traces are received (feature flag required).
+   - Set `GUI_OTEL_ENDPOINT=http://collector:4317`, tail logs for `telemetry.gui` events (`session_started`, `session_completed`, `stream_opened`), and ensure your deployment-side subscriber forwards them to the tracing stack.
 9. **CI Matrix**
    - `cargo fmt`
    - `cargo clippy --workspace --all-targets -- -D warnings`

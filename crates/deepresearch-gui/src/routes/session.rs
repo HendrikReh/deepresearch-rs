@@ -45,6 +45,10 @@ pub struct TraceResponse {
     pub artifacts: TraceArtifacts,
     pub requires_manual: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub fact_check: Option<FactCheckSnapshot>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub critic: Option<CriticSnapshot>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub trace_path: Option<String>,
 }
 
@@ -81,6 +85,19 @@ pub struct TraceArtifacts {
     pub mermaid: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub graphviz: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct FactCheckSnapshot {
+    pub confidence: f32,
+    pub passed: bool,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub verified_sources: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct CriticSnapshot {
+    pub confident: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -143,6 +160,13 @@ async fn start_session(
         requires_manual: false,
     });
 
+    let metrics_snapshot = service.metrics();
+    crate::metrics::session_started(
+        &session_id,
+        metrics_snapshot.running_sessions,
+        metrics_snapshot.available_permits,
+    );
+
     let response = StartSessionResponse {
         session_id,
         state: state_snapshot.state,
@@ -183,6 +207,16 @@ async fn get_session_trace(
                 graphviz: outcome.explain_graphviz(),
             },
             requires_manual: outcome.requires_manual,
+            fact_check: outcome
+                .factcheck_confidence
+                .map(|confidence| FactCheckSnapshot {
+                    confidence,
+                    passed: outcome.factcheck_passed.unwrap_or(false),
+                    verified_sources: outcome.factcheck_verified_sources.clone(),
+                }),
+            critic: outcome
+                .critic_confident
+                .map(|confident| CriticSnapshot { confident }),
             trace_path: outcome
                 .trace_path
                 .as_ref()

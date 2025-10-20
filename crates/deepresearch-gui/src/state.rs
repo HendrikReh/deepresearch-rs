@@ -1,4 +1,7 @@
-use crate::config::{AppConfig, StorageBackend};
+use crate::{
+    config::{AppConfig, StorageBackend},
+    metrics,
+};
 #[cfg(feature = "postgres-session")]
 use anyhow::Context;
 use anyhow::Result;
@@ -13,7 +16,11 @@ use serde_json::Value;
 use std::convert::Infallible;
 use std::path::PathBuf;
 use std::pin::Pin;
-use std::sync::Arc;
+use std::sync::{
+    Arc,
+    atomic::{AtomicUsize, Ordering},
+};
+use std::task::{Context as TaskContext, Poll};
 use tokio::sync::{Semaphore, broadcast};
 use tokio_stream::wrappers::BroadcastStream;
 use tokio_stream::{self as stream, Stream, StreamExt};
@@ -91,6 +98,7 @@ pub struct SessionService {
     streams: Arc<DashMap<String, broadcast::Sender<SessionEvent>>>,
     max_concurrency: usize,
     namespace: Option<String>,
+    stream_subscribers: Arc<AtomicUsize>,
 }
 
 impl SessionService {
@@ -108,6 +116,7 @@ impl SessionService {
             streams: Arc::new(DashMap::new()),
             max_concurrency: max_concurrency.max(1),
             namespace,
+            stream_subscribers: Arc::new(AtomicUsize::new(0)),
         }
     }
 
@@ -137,7 +146,8 @@ impl SessionService {
         let namespace = self.namespace.clone();
 
         tokio::spawn(async move {
-            let permit = match semaphore.acquire_owned().await {
+            let semaphore_clone = semaphore.clone();
+            let permit = match semaphore_clone.acquire_owned().await {
                 Ok(permit) => permit,
                 Err(err) => {
                     let event = SessionEvent::error(&err);
@@ -148,6 +158,17 @@ impl SessionService {
                             error: err.to_string(),
                             event,
                         },
+                    );
+                    let running = sessions
+                        .iter()
+                        .filter(|entry| matches!(entry.value(), SessionRecord::Running))
+                        .count();
+                    let available_permits = semaphore.available_permits();
+                    metrics::session_failed(
+                        &session_id_for_task,
+                        running,
+                        available_permits,
+                        &err.to_string(),
                     );
                     streams.remove(&session_id_for_task);
                     return;
@@ -182,6 +203,18 @@ impl SessionService {
                             event: event.clone(),
                         },
                     );
+                    let running = sessions
+                        .iter()
+                        .filter(|entry| matches!(entry.value(), SessionRecord::Running))
+                        .count();
+                    let available_permits = semaphore.available_permits();
+                    metrics::session_completed(
+                        &session_id_for_task,
+                        outcome.requires_manual,
+                        outcome.trace_events.len(),
+                        running,
+                        available_permits,
+                    );
                     let _ = sender_for_task.send(event);
                 }
                 Err(err) => {
@@ -193,6 +226,17 @@ impl SessionService {
                             error: err.to_string(),
                             event: event.clone(),
                         },
+                    );
+                    let running = sessions
+                        .iter()
+                        .filter(|entry| matches!(entry.value(), SessionRecord::Running))
+                        .count();
+                    let available_permits = semaphore.available_permits();
+                    metrics::session_failed(
+                        &session_id_for_task,
+                        running,
+                        available_permits,
+                        &err.to_string(),
                     );
                     let _ = sender_for_task.send(event);
                 }
@@ -250,12 +294,12 @@ impl SessionService {
                 SessionRecord::Completed { event, .. } => {
                     let event = event.clone().into_sse_event();
                     let stream = stream::iter(vec![Result::<Event, Infallible>::Ok(event)]);
-                    return Some(Box::pin(stream));
+                    return Some(self.instrument_stream(session_id, Box::pin(stream)));
                 }
                 SessionRecord::Failed { event, .. } => {
                     let event = event.clone().into_sse_event();
                     let stream = stream::iter(vec![Result::<Event, Infallible>::Ok(event)]);
-                    return Some(Box::pin(stream));
+                    return Some(self.instrument_stream(session_id, Box::pin(stream)));
                 }
                 SessionRecord::Running => {}
             }
@@ -270,7 +314,7 @@ impl SessionService {
                     None
                 }
             });
-            Box::pin(stream) as SseStream
+            self.instrument_stream(session_id, Box::pin(stream))
         })
     }
 
@@ -334,6 +378,50 @@ impl SessionService {
         } else {
             raw
         }
+    }
+
+    fn instrument_stream(&self, session_id: &str, stream: SseStream) -> SseStream {
+        self.stream_subscribers.fetch_add(1, Ordering::SeqCst);
+        let active = self.stream_subscribers.load(Ordering::SeqCst);
+        metrics::stream_opened(session_id, active);
+        let guard = InstrumentedStream::new(
+            stream,
+            session_id.to_string(),
+            self.stream_subscribers.clone(),
+        );
+        Box::pin(guard)
+    }
+}
+
+struct InstrumentedStream {
+    inner: SseStream,
+    session_id: Arc<String>,
+    subscribers: Arc<AtomicUsize>,
+}
+
+impl InstrumentedStream {
+    fn new(inner: SseStream, session_id: String, subscribers: Arc<AtomicUsize>) -> Self {
+        Self {
+            inner,
+            session_id: Arc::new(session_id),
+            subscribers,
+        }
+    }
+}
+
+impl Stream for InstrumentedStream {
+    type Item = Result<Event, Infallible>;
+
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut TaskContext<'_>) -> Poll<Option<Self::Item>> {
+        self.inner.as_mut().poll_next(cx)
+    }
+}
+
+impl Drop for InstrumentedStream {
+    fn drop(&mut self) {
+        let previous = self.subscribers.fetch_sub(1, Ordering::SeqCst);
+        let active = previous.saturating_sub(1);
+        metrics::stream_closed(self.session_id.as_str(), active);
     }
 }
 

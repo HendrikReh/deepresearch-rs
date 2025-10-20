@@ -171,5 +171,7 @@ async fn session_stream_reports_completion() {
         "task metrics missing from trace payload"
     );
     assert!(trace_payload["artifacts"].is_object());
+    assert!(trace_payload["fact_check"].is_object());
+    assert!(trace_payload["critic"].is_object());
     assert!(trace_payload["requires_manual"].is_boolean());
 }

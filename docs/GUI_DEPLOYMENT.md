@@ -21,7 +21,7 @@ This playbook documents how to build, configure, and operate the Axum-based GUI 
 | `GUI_STORAGE` | `inmemory` | Switch to `postgres` (requires `--features postgres-session`) for durable sessions. |
 | `GUI_POSTGRES_URL` / `DATABASE_URL` | _required when `GUI_STORAGE=postgres`_ | Connection string for Postgres-backed session storage. |
 | `GUI_SESSION_NAMESPACE` | _unset_ | Prepends a namespace to session IDs for multi-tenant deployments. |
-| `GUI_OTEL_ENDPOINT` | _unset_ | OTLP collector endpoint; when set, tracing is exported via OpenTelemetry. |
+| `GUI_OTEL_ENDPOINT` | _unset_ | Optional hint for ops tooling. When set, the service emits `telemetry.gui` tracing events annotated with the endpoint so an external subscriber (e.g., OpenTelemetry sidecar) can forward spans. |
 
 > **Prompt rule:** Incoming queries are automatically prefixed with `use context7` to satisfy the global prompt contract; upstream clients should avoid duplicating the prefix.
 
@@ -33,9 +33,11 @@ This playbook documents how to build, configure, and operate the Axum-based GUI 
 
 ## Monitoring & Alerting
 - **Health probes:** Configure liveness on `/health/live` (expects `200 OK`) and readiness on `/health/ready` (returns `503` if the GUI is disabled or capacity is exhausted).
-- **Session telemetry:** When `GUI_OTEL_ENDPOINT` is set, structured spans (including task-level fields) stream to the configured OTLP collector. Default JSON logs follow the rest of the Rust binaries.
+- **Session telemetry:** The GUI emits structured `telemetry.gui` tracing events (`session_started`, `session_completed`, `session_failed`) with `session_id`, concurrency gauges, and manual-review flags. When `GUI_OTEL_ENDPOINT` is set, the endpoint value is included so platform teams can route traces to an external collector.
+- **Stream observers:** SSE subscriptions increase the `stream_opened`/`stream_closed` counters. Alert if active subscribers spike or streams churn rapidly—this usually indicates GUI disconnects or networking issues.
 - **Event stream:** `/api/sessions/:id/stream` emits JSON-encoded SSE events (`started`, `completed`, `error`). Watch for `error` events or repeated reconnects to detect failures early.
-- **Capacity metrics:** Every response embeds `metrics` showing `max_concurrency`, `available_permits`, `running_sessions`, and `total_sessions`. Surface these via your monitoring stack to track load.
+- **Capacity metrics:** Every response embeds `metrics` showing `max_concurrency`, `available_permits`, `running_sessions`, and `total_sessions`. Feed these into Grafana/Datadog dashboards for saturation alerts.
+- **Explainability signals:** The trace endpoint now returns fact-check confidence, critic verdict confidence, per-task latency buckets, and manual-review indicators. Fold these into downstream QA dashboards when analysing regressions.
 
 ## Operations Runbook
 - **Start a session:** `curl -XPOST :8080/api/sessions -H 'content-type: application/json' -H 'authorization: Bearer <token>' -d '{"query":"What is the roadmap impact?"}'`.
@@ -44,4 +46,3 @@ This playbook documents how to build, configure, and operate the Axum-based GUI 
 - **Scale down & cleanup:** Shutdown the pods, then remove any Postgres sessions or local logs if the deployment is ephemeral.
 
 Document updates should accompany changes to deployment tooling, environment variables, or operational procedures to keep DevOps aligned.
-

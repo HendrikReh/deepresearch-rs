@@ -49,6 +49,8 @@ type TraceResponse = {
   task_metrics: TaskMetric[];
   artifacts: TraceArtifacts;
   requires_manual: boolean;
+  fact_check?: FactCheckSnapshot;
+  critic?: CriticSnapshot;
   trace_path?: string;
 };
 
@@ -80,6 +82,16 @@ type TaskMetric = {
   occurrences: number;
   total_duration_ms?: number;
   average_duration_ms?: number;
+};
+
+type FactCheckSnapshot = {
+  confidence: number;
+  passed: boolean;
+  verified_sources: string[];
+};
+
+type CriticSnapshot = {
+  confident: boolean;
 };
 
 type TraceArtifacts = {
@@ -272,6 +284,8 @@ const App = () => {
   const [traceSteps, setTraceSteps] = useState<TraceStep[] | null>(null);
   const [traceTimeline, setTraceTimeline] = useState<TimelinePoint[] | null>(null);
   const [taskMetrics, setTaskMetrics] = useState<TaskMetric[] | null>(null);
+  const [factCheckSnapshot, setFactCheckSnapshot] = useState<FactCheckSnapshot | null>(null);
+  const [criticSnapshot, setCriticSnapshot] = useState<CriticSnapshot | null>(null);
   const [requiresManual, setRequiresManual] = useState<boolean>(false);
   const [artifactVisibility, setArtifactVisibility] = useState<Record<ArtifactVisibilityKey, boolean>>({
     timeline: true,
@@ -356,6 +370,8 @@ const App = () => {
     setTraceSteps(null);
     setTraceTimeline(null);
     setTaskMetrics(null);
+    setFactCheckSnapshot(null);
+    setCriticSnapshot(null);
     setRequiresManual(false);
     setArtifactVisibility({
       timeline: true,
@@ -468,6 +484,8 @@ const App = () => {
         setTraceArtifacts(trace.artifacts ?? null);
         setTraceTimeline(trace.timeline);
         setTaskMetrics(trace.task_metrics);
+        setFactCheckSnapshot(trace.fact_check ?? null);
+        setCriticSnapshot(trace.critic ?? null);
         setRequiresManual(trace.requires_manual);
       } catch (traceError) {
         console.error(traceError);
@@ -584,6 +602,8 @@ const App = () => {
         setTraceTimeline(trace.timeline);
         setTaskMetrics(trace.task_metrics);
         setTraceArtifacts(trace.artifacts ?? null);
+        setFactCheckSnapshot(trace.fact_check ?? null);
+        setCriticSnapshot(trace.critic ?? null);
         setRequiresManual(trace.requires_manual);
         setSummary(trace.summary);
       }
@@ -766,6 +786,59 @@ const App = () => {
                 <div className="prose prose-invert max-w-none">
                   <h3>Summary</h3>
                   <p>{summary}</p>
+                </div>
+
+                <div className="grid gap-3 md:grid-cols-2">
+                  {factCheckSnapshot && (
+                    <div className="rounded-md border border-slate-800 bg-slate-950/70 p-4 text-sm text-slate-200">
+                      <header className="flex items-center justify-between text-xs font-semibold uppercase tracking-wide text-slate-400">
+                        <span>Fact Check</span>
+                        <span
+                          className={
+                            factCheckSnapshot.passed ? "text-emerald-300" : "text-amber-300"
+                          }
+                        >
+                          {factCheckSnapshot.passed ? "Passed" : "Manual Review"}
+                        </span>
+                      </header>
+                      <p className="mt-2 text-sm text-slate-300">
+                        Confidence: {(factCheckSnapshot.confidence * 100).toFixed(1)}%
+                      </p>
+                      {factCheckSnapshot.verified_sources.length > 0 && (
+                        <div className="mt-2 space-y-1 text-xs text-slate-400">
+                          <p className="font-semibold uppercase tracking-wide text-slate-500">
+                            Verified sources
+                          </p>
+                          <ul className="list-disc space-y-1 pl-5">
+                            {factCheckSnapshot.verified_sources.map((source) => (
+                              <li key={source} className="break-all">
+                                {source}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {criticSnapshot && (
+                    <div className="rounded-md border border-slate-800 bg-slate-950/70 p-4 text-sm text-slate-200">
+                      <header className="flex items-center justify-between text-xs font-semibold uppercase tracking-wide text-slate-400">
+                        <span>Critic Verdict</span>
+                        <span
+                          className={
+                            criticSnapshot.confident ? "text-emerald-300" : "text-amber-300"
+                          }
+                        >
+                          {criticSnapshot.confident ? "Confident" : "Needs review"}
+                        </span>
+                      </header>
+                      <p className="mt-2 text-sm text-slate-300">
+                        {criticSnapshot.confident
+                          ? "Automated checks passed"
+                          : "Critic requested additional review."}
+                      </p>
+                    </div>
+                  )}
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2">

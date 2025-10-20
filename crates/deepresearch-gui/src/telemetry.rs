@@ -1,5 +1,6 @@
-use crate::config::AppConfig;
+use crate::{config::AppConfig, metrics};
 use anyhow::Result;
+use tracing::warn;
 use tracing_subscriber::{EnvFilter, Registry, layer::SubscriberExt};
 
 pub fn init_tracing(config: &AppConfig) -> Result<()> {
@@ -13,7 +14,12 @@ pub fn init_tracing(config: &AppConfig) -> Result<()> {
     tracing::subscriber::set_global_default(subscriber)?;
 
     if let Some(endpoint) = config.otel_endpoint.as_deref() {
-        tracing::warn!(target: "telemetry", endpoint, "GUI_OTEL_ENDPOINT configured, but OpenTelemetry export requires enabling the 'otel' feature in deepresearch-gui");
+        metrics::init_telemetry(endpoint)?;
+        warn!(
+            target = "telemetry.gui",
+            endpoint,
+            "GUI_OTEL_ENDPOINT set; attach an OTLP subscriber (e.g. OpenTelemetry collector) to forward tracing spans"
+        );
     }
 
     Ok(())

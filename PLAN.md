@@ -124,24 +124,24 @@ This plan tracks the new graph-first implementation. Update the checkboxes and a
 **Target Window:** Weeks 4–6 of the v0.2 cycle (follows M10 rollout)
 
 #### Visualization Experience
-- [ ] Render an interactive reasoning DAG sourced from `TraceCollector` JSON (pan/zoom, task hover details, branch highlighting).
-- [ ] Add a chronological trace timeline that streams updates live via the existing SSE endpoint and annotates manual-review decisions.
-- [ ] Persist the final trace view alongside the summary so resumed sessions load historical explainability data.
+- [x] Render an interactive reasoning DAG sourced from `TraceCollector` JSON (pan/zoom, task hover details, branch highlighting).
+- [x] Add a chronological trace timeline that streams updates live via the existing SSE endpoint and annotates manual-review decisions.
+- [x] Persist the final trace view alongside the summary so resumed sessions load historical explainability data.
 
 #### Metrics & Telemetry
-- [ ] Surface per-task metrics (latency, retries, confidence) in both the DAG inspector and a dedicated metrics panel.
-- [ ] Emit GUI runtime metrics and logs through OpenTelemetry when `GUI_OTEL_ENDPOINT` is set; include session ids, task ids, and stream health counters.
-- [ ] Integrate capacity and latency gauges into the existing monitoring dashboards (Grafana/Datadog hand-off).
+- [x] Surface per-task metrics (latency, retries, confidence) in both the DAG inspector and a dedicated metrics panel.
+- [x] Emit GUI runtime metrics and logs through OpenTelemetry when `GUI_OTEL_ENDPOINT` is set; include session ids, task ids, and stream health counters.
+- [x] Integrate capacity and latency gauges into the existing monitoring dashboards (Grafana/Datadog hand-off).
 
 #### UX Controls & Export
-- [ ] Provide explainability toggles matching CLI/API (`--explain`, markdown, mermaid, graphviz) and ensure queries continue to auto-prefix `use context7`.
-- [ ] Enable download buttons for trace artifacts (JSON, markdown, mermaid) and guard access behind the optional bearer token.
-- [ ] Add a session comparison mode that diffs two runs on metrics and verdicts to support QA/analyst reviews.
+- [x] Provide explainability toggles matching CLI/API (`--explain`, markdown, mermaid, graphviz) and ensure queries continue to auto-prefix `use context7`.
+- [x] Enable download buttons for trace artifacts (JSON, markdown, mermaid) and guard access behind the optional bearer token.
+- [x] Add a session comparison mode that diffs two runs on metrics and verdicts to support QA/analyst reviews.
 
 #### Quality & Documentation
-- [ ] Extend GUI integration tests to cover explainability toggles, download endpoints, and DAG rendering fallbacks.
-- [ ] Update `docs/GUI_ACCEPTANCE.md` with the new explainability scenarios and add troubleshooting notes for telemetry configuration.
-- [ ] Provide operator guidance on sizing OTEL exporters and alert thresholds for stream failure rates.
+- [x] Extend GUI integration tests to cover explainability toggles, download endpoints, and DAG rendering fallbacks.
+- [x] Update `docs/GUI_ACCEPTANCE.md` with the new explainability scenarios and add troubleshooting notes for telemetry configuration.
+- [x] Provide operator guidance on sizing OTEL exporters and alert thresholds for stream failure rates.
 
 #### Dependencies & Coordination
 - **Prereqs:** TraceCollector JSON schema finalized (M10 follow-up), OTEL collector availability, metrics taxonomy aligned with API/CLI surfaces.

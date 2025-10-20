@@ -55,6 +55,10 @@ pub struct SessionOutcome {
     pub trace_summary: TraceSummary,
     pub trace_path: Option<PathBuf>,
     pub requires_manual: bool,
+    pub factcheck_confidence: Option<f32>,
+    pub factcheck_passed: Option<bool>,
+    pub factcheck_verified_sources: Vec<String>,
+    pub critic_confident: Option<bool>,
 }
 
 impl SessionOutcome {
@@ -125,6 +129,13 @@ fn build_outcome(
         .context
         .get_sync::<bool>("final.requires_manual")
         .unwrap_or(false);
+    let factcheck_confidence = session.context.get_sync::<f32>("factcheck.confidence");
+    let factcheck_passed = session.context.get_sync::<bool>("factcheck.passed");
+    let factcheck_verified_sources = session
+        .context
+        .get_sync::<Vec<String>>("factcheck.verified_sources")
+        .unwrap_or_default();
+    let critic_confident = session.context.get_sync::<bool>("critique.confident");
     let sources = session
         .context
         .get_sync::<AnalystOutput>("analysis.output")
@@ -150,6 +161,10 @@ fn build_outcome(
         trace_summary,
         trace_path,
         requires_manual,
+        factcheck_confidence,
+        factcheck_passed,
+        factcheck_verified_sources,
+        critic_confident,
     })
 }
 
