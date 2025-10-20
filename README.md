@@ -1,4 +1,4 @@
-# 🧠 DeepResearch — Explainable Multi-Agent Research in Rust
+# DeepResearch — Explainable Multi-Agent Research in Rust
 
 DeepResearch is a graph-driven, Rust-first AI Research Assistant that proves every conclusion it delivers. Built atop `graph-flow`, Axum, and Qdrant, the system showcases how to operationalise **Explainable AI (XAI)** end-to-end: autonomous research, transparent reasoning, traceable evidence, and governance-ready artefacts.
 
