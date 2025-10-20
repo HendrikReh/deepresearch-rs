@@ -31,3 +31,4 @@
 ### OS cruft
 **/.DS_Store
 /crates/deepresearch-core/data
+/crates/deepresearch-gui/data
