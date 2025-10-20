@@ -214,6 +214,7 @@ impl SessionService {
                     summary: None,
                     error: None,
                     trace_available: false,
+                    requires_manual: false,
                 },
                 SessionRecord::Completed { outcome, .. } => SessionStatus {
                     session_id: session_id.to_string(),
@@ -221,6 +222,7 @@ impl SessionService {
                     summary: Some(outcome.summary.clone()),
                     error: None,
                     trace_available: !outcome.trace_events.is_empty(),
+                    requires_manual: outcome.requires_manual,
                 },
                 SessionRecord::Failed { error, .. } => SessionStatus {
                     session_id: session_id.to_string(),
@@ -228,6 +230,7 @@ impl SessionService {
                     summary: None,
                     error: Some(error.clone()),
                     trace_available: false,
+                    requires_manual: false,
                 },
             })
     }
@@ -283,6 +286,7 @@ impl SessionService {
                         summary: None,
                         error: None,
                         trace_available: false,
+                        requires_manual: false,
                     },
                     SessionRecord::Completed { outcome, .. } => SessionStatus {
                         session_id,
@@ -290,6 +294,7 @@ impl SessionService {
                         summary: Some(outcome.summary.clone()),
                         error: None,
                         trace_available: !outcome.trace_events.is_empty(),
+                        requires_manual: outcome.requires_manual,
                     },
                     SessionRecord::Failed { error, .. } => SessionStatus {
                         session_id,
@@ -297,6 +302,7 @@ impl SessionService {
                         summary: None,
                         error: Some(error.clone()),
                         trace_available: false,
+                        requires_manual: false,
                     },
                 }
             })
@@ -363,6 +369,7 @@ pub struct SessionStatus {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
     pub trace_available: bool,
+    pub requires_manual: bool,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -382,6 +389,8 @@ pub struct SessionEvent {
     pub summary: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub trace_available: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub requires_manual: Option<bool>,
 }
 
 impl SessionEvent {
@@ -391,6 +400,7 @@ impl SessionEvent {
             message: Some("session started".into()),
             summary: None,
             trace_available: None,
+            requires_manual: None,
         }
     }
 
@@ -400,6 +410,7 @@ impl SessionEvent {
             message: Some("session completed".into()),
             summary: Some(outcome.summary.clone()),
             trace_available: Some(!outcome.trace_events.is_empty()),
+            requires_manual: Some(outcome.requires_manual),
         }
     }
 
@@ -409,6 +420,7 @@ impl SessionEvent {
             message: Some(format!("session failed: {error}")),
             summary: None,
             trace_available: Some(false),
+            requires_manual: Some(false),
         }
     }
 

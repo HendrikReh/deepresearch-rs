@@ -24,7 +24,7 @@ This guide consolidates recommended verification steps for the DeepResearch stac
 | Lint | `cargo clippy --workspace --all-targets -- -D warnings` | Ensures clean build |
 | Offline build smoke test | `cargo check --offline` | Catches missing workspace deps |
 | Full test suite | `cargo test --workspace --all-targets -- --nocapture` | Runs unit + integration + logging tests |
-| GUI smoke tests | `cargo test -p deepresearch-gui --test http -- --nocapture` | Verifies health/auth guards, session streaming (SSE), and API wiring |
+| GUI smoke tests | `cargo test -p deepresearch-gui --test http -- --nocapture` | Verifies health/auth guards, SSE stream payload (manual-review flag), metrics/timeline trace response, and API wiring |
 | Snapshot regression | `cargo test --offline -p deepresearch-core finalize_summary_snapshot` | Guards finalize/critic output formatting (use `INSTA_UPDATE=always cargo test --offline -p deepresearch-core finalize_summary_snapshot` to refresh deliberately) |
 | Offline harness | `cargo test --offline --workspace --all-targets -- --nocapture` | Mirrors CI test matrix locally |
 

@@ -116,6 +116,10 @@ async fn session_stream_reports_completion() {
             .unwrap_or(false),
         "summary missing in status payload"
     );
+    assert!(
+        status["requires_manual"].is_boolean(),
+        "status payload missing requires_manual flag"
+    );
 
     let outcome = shared_state
         .session_service()
@@ -142,4 +146,30 @@ async fn session_stream_reports_completion() {
         body.contains("\"summary\""),
         "stream payload missing summary: {body}"
     );
+    assert!(
+        body.contains("\"requires_manual\":false"),
+        "stream payload missing requires_manual indicator: {body}"
+    );
+
+    let trace_response = server
+        .get(&format!("/api/sessions/{session_id}/trace"))
+        .await;
+    assert_eq!(trace_response.status_code(), 200);
+    let trace_payload = trace_response.json::<serde_json::Value>();
+    assert!(
+        trace_payload["timeline"]
+            .as_array()
+            .map(|items| !items.is_empty())
+            .unwrap_or(false),
+        "timeline missing from trace payload"
+    );
+    assert!(
+        trace_payload["task_metrics"]
+            .as_array()
+            .map(|items| !items.is_empty())
+            .unwrap_or(false),
+        "task metrics missing from trace payload"
+    );
+    assert!(trace_payload["artifacts"].is_object());
+    assert!(trace_payload["requires_manual"].is_boolean());
 }

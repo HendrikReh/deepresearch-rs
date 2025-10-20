@@ -121,28 +121,147 @@ This plan tracks the new graph-first implementation. Update the checkboxes and a
 - CI job suite covers HTTP/WebSocket smoke tests and front-end asset compile; docs updated for contributors and operators.
 
 ### M11 — GUI Explainability & Observability
-- [ ] Render reasoning DAGs and trace timelines inside the GUI using the existing `TraceCollector` output.
-- [ ] Surface per-task metrics (latency, retries, confidence) and highlight manual-review branches.
-- [ ] Expose explainability toggles (`--explain` parity) and downloadable trace artifacts.
-- [ ] Instrument frontend telemetry (OpenTelemetry exporter) and connect to tracing stack.
+**Target Window:** Weeks 4–6 of the v0.2 cycle (follows M10 rollout)
+
+#### Visualization Experience
+- [ ] Render an interactive reasoning DAG sourced from `TraceCollector` JSON (pan/zoom, task hover details, branch highlighting).
+- [ ] Add a chronological trace timeline that streams updates live via the existing SSE endpoint and annotates manual-review decisions.
+- [ ] Persist the final trace view alongside the summary so resumed sessions load historical explainability data.
+
+#### Metrics & Telemetry
+- [ ] Surface per-task metrics (latency, retries, confidence) in both the DAG inspector and a dedicated metrics panel.
+- [ ] Emit GUI runtime metrics and logs through OpenTelemetry when `GUI_OTEL_ENDPOINT` is set; include session ids, task ids, and stream health counters.
+- [ ] Integrate capacity and latency gauges into the existing monitoring dashboards (Grafana/Datadog hand-off).
+
+#### UX Controls & Export
+- [ ] Provide explainability toggles matching CLI/API (`--explain`, markdown, mermaid, graphviz) and ensure queries continue to auto-prefix `use context7`.
+- [ ] Enable download buttons for trace artifacts (JSON, markdown, mermaid) and guard access behind the optional bearer token.
+- [ ] Add a session comparison mode that diffs two runs on metrics and verdicts to support QA/analyst reviews.
+
+#### Quality & Documentation
+- [ ] Extend GUI integration tests to cover explainability toggles, download endpoints, and DAG rendering fallbacks.
+- [ ] Update `docs/GUI_ACCEPTANCE.md` with the new explainability scenarios and add troubleshooting notes for telemetry configuration.
+- [ ] Provide operator guidance on sizing OTEL exporters and alert thresholds for stream failure rates.
+
+#### Dependencies & Coordination
+- **Prereqs:** TraceCollector JSON schema finalized (M10 follow-up), OTEL collector availability, metrics taxonomy aligned with API/CLI surfaces.
+- **Hand-offs:** Visualization contract shared with CLI/API teams; telemetry pipeline validated with Platform observability group.
+
+#### Acceptance Criteria
+- GUI renders the reasoning DAG and live timeline for active sessions and shows persisted views for completed runs.
+- Metrics panel surfaces latency, retry counts, confidence, and manual-review flags per task with export capability.
+- Explainability toggles mirror CLI/API behaviour, maintain the `use context7` prompt prefix, and gated downloads function with auth.
+- OTEL spans/metrics flow to the configured collector with documentation covering setup, dashboards, and alerts.
+- Automated tests and updated docs cover explainability flows end-to-end and are exercised in CI.
 
 ### M12 — Python Tool Integration (Math & Stats)
-- [ ] Design the Python execution bridge (evaluate `pyo3`, `python-subprocess`, or microservice) with sandboxing + timeout guarantees.
-- [ ] Implement a `MathToolTask` that routes numeric sub-queries through the Python runtime and returns structured outputs.
-- [ ] Add regression tests covering numerical workloads (e.g., regression, summary stats) and failure fallbacks.
-- [ ] Document tooling setup (venv management, dependency pinning) and extend CI to validate the Python path offline.
+**Target Window:** Weeks 7–9 of the v0.2 cycle (begins once M11 telemetry is stable)
+
+#### Architecture & Platform
+- [ ] Finalize the Python execution strategy (embedded `pyo3` module vs. sidecar microservice). Decision must include sandboxing, resource quotas, and restart semantics.
+- [ ] Define the Math Tool API contract (`MathToolRequest`, `MathToolResponse`, error taxonomy) and publish protobuf/JSON schema shared across Rust + Python.
+- [ ] Provide a hardened packaging story (Docker image and optional virtualenv bootstrap) with dependency pinning and reproducible builds.
+
+#### Workflow Integration
+- [ ] Implement `MathToolTask` in `deepresearch-core` that dispatches numeric sub-queries, ensures the `use context7` prefix is preserved in upstream prompts, and records outputs under `math.*` context keys.
+- [ ] Add tool routing logic to the Researcher/Analyst workflow so fact-check and critic steps consume structured math outputs (values, units, confidence).
+- [ ] Support timeout, retry, and graceful degradation paths (fallback to explanatory text when Python service is unavailable).
+
+#### Reliability & Operations
+- [ ] Introduce health and readiness probes for the Python service, plus metrics (invocation latency, error rate, concurrency) exported via OpenTelemetry.
+- [ ] Provide docker-compose overrides that run GUI + API + Python tool + data services for local full-stack validation.
+- [ ] Document runbooks for dependency upgrades, vulnerability patches, and scaling the Python component independently.
+
+#### Quality & Testing
+- [ ] Add integration tests that execute representative math workloads (time-series regression, summary stats, error propagation) and verify critic behaviour on failures.
+- [ ] Extend CI to run Python unit tests (`pytest`) and a Rust-to-Python smoke test under `cargo test --offline`.
+- [ ] Snapshot high-value math responses to catch regressions in numerical precision or formatting.
+
+#### Documentation & Enablement
+- [ ] Update contributor docs with development workflow (venv management, linting, formatting) for the Python service.
+- [ ] Publish API examples showing how CLI/API clients submit math-intensive queries and receive structured answers.
+- [ ] Provide security guidance covering sandboxing limits, allowed libraries, and how secrets are injected (env vars vs. secret manager).
+
+#### Dependencies & Coordination
+- **Prereqs:** M11 telemetry instrumentation operational, OTEL collector sized for additional spans, DevOps ready with Python build pipeline.
+- **Hand-offs:** Math Tool API shared with analytics stakeholders; security review scheduled before production rollout.
+
+#### Acceptance Criteria
+- Research sessions can invoke the math tool end-to-end (CLI/API/GUI) with results surfaced to analyst/critic steps and logged under new context keys.
+- Failure scenarios (timeouts, invalid input) produce safe fallbacks and alerts without blocking the overall workflow.
+- CI covers Python unit/integration tests alongside Rust suites, and deployment artifacts (images/venv) are reproducible.
+- Documentation and runbooks enable engineers and operators to build, deploy, monitor, and troubleshoot the Python service.
 
 ### M13 — Continual Learning & Behavioural Tuning
-- [ ] Define data pipeline that snapshots session traces/logs into a training corpus with consent + retention controls.
-- [ ] Build offline evaluation harness that scores new model checkpoints before promotion.
-- [ ] Automate weekly tuning job (CLI command + GitHub Action) producing performance deltas and release notes.
-- [ ] Update governance docs covering review gates, safety tests, and rollback procedures.
+**Target Window:** Weeks 10–12 of the v0.2 cycle (post math-tool rollout)
+
+#### Data Pipeline & Curation
+- [ ] Stand up an automated ETL that ingests session traces, verdicts, metrics, and math tool outputs into a governed training corpus with consent/retention flags.
+- [ ] Classify sessions by taxonomy (domain, confidence, manual review) and capture outcome labels needed for supervised tuning.
+- [ ] Implement retention, redaction, and audit logging to prove compliance with privacy policies.
+
+#### Evaluation Harness
+- [ ] Build an offline evaluator that replays captured sessions against new model checkpoints, collecting verdict deltas, confidence shifts, and regression indicators.
+- [ ] Include statistical tests (e.g., bootstrap significance) to decide if model changes meet promotion thresholds.
+- [ ] Provide visualization dashboards summarizing evaluation runs for PM/QA review.
+
+#### Automation & Ops
+- [ ] Create a CLI command (and GitHub Action) that orchestrates weekly tuning: fetch data, train/evaluate, output metrics, and produce release artifacts.
+- [ ] Integrate with observability stack to alert on tuning job failures or metric regressions.
+- [ ] Ensure the job handles large datasets via batching or distributed execution as needed.
+
+#### Governance & Documentation
+- [ ] Update governance docs with review gates, safety guardrails, rollback procedures, and sign-off requirements for promoting new checkpoints.
+- [ ] Document how to interpret evaluation reports, including residual risk analysis and fallback plans.
+- [ ] Provide contributor guidance for adding new evaluation scenarios or metrics.
+
+#### Dependencies & Coordination
+- **Prereqs:** M10–M12 telemetry/math context keys stable, storage layer sized for historical session retention, access to compute for training jobs.
+- **Hand-offs:** Evaluation harness outputs shared with stakeholders; governance changes reviewed with legal/compliance.
+
+#### Acceptance Criteria
+- Training corpus pipelines continuously populate governed datasets, respecting consent and retention policies.
+- Evaluation harness produces repeatable, statistically sound comparisons with dashboards for decision makers.
+- Weekly tuning job runs automatically, surfaces alerts on failure, and generates release-ready reports.
+- Governance documentation and contributor guides enable controlled promotion and rollback of tuned behaviours.
 
 ### M14 — v0.2 Release Readiness
-- [ ] Update PRD, README, and docs (`docs/CI_GUIDE.md`, `docs/TESTING_GUIDE.md`, GUI quickstart) to reflect new interfaces.
-- [ ] Establish acceptance criteria (GUI usability ≥4/5, math-tool coverage, continual learning cadence) and add snapshot tests.
-- [ ] Run end-to-end load tests across CLI/API/GUI to confirm latency and concurrency targets.
-- [ ] Prepare release checklist including packaging, changelog, and deployment playbooks for GUI + Python services.
+**Target Window:** Weeks 13–15 of the v0.2 cycle (final stabilization sprint)
+
+#### Release Documentation & Communication
+- [ ] Refresh PRD, README, and product docs (`docs/CI_GUIDE.md`, `docs/TESTING_GUIDE.md`, GUI quickstart) to capture GUI explainability, math tool integration, and continual learning flows.
+- [ ] Publish a versioned release notes draft including highlights, breaking changes, migration guidance, and the enforced `use context7` prompt rule.
+- [ ] Produce operator runbooks consolidating deployment steps for API, GUI, Python tool, and evaluation jobs.
+
+#### Validation & Testing
+- [ ] Execute end-to-end load tests across CLI/API/GUI with the math tool enabled, confirming latency, concurrency caps, and error budgets.
+- [ ] Complete GUI usability study (target ≥4/5) and document findings plus remediation tasks if thresholds are missed.
+- [ ] Freeze and update snapshot/acceptance tests covering new explainability screens, math outputs, and evaluation dashboards.
+
+#### Packaging & Deployment
+- [ ] Build and sign release artifacts (Rust binaries, Docker images, Python package) with reproducible provenance metadata.
+- [ ] Validate deployment manifests/playbooks for cloud (Helm/Kustomize) and local (docker-compose) environments, ensuring feature flags align.
+- [ ] Verify upgrade/migration steps from v0.1 → v0.2, including data migrations, session resume compatibility, and config diffs.
+
+#### Operational Readiness
+- [ ] Confirm monitoring dashboards aggregate GUI, Python tool, and tuning job metrics with alert thresholds set and rehearsed.
+- [ ] Run incident response tabletop covering math tool failure, telemetry outage, and tuning job regression scenarios.
+- [ ] Ensure support/on-call documentation is updated with escalation paths and known issues.
+
+#### Governance & Sign-off
+- [ ] Collect approvals from product, security, and compliance stakeholders using the updated governance checklist.
+- [ ] Finalize the release checklist (including smoke tests, rollback plan, communication timeline) and obtain sign-off before GA.
+- [ ] Schedule post-launch monitoring windows and success metric reviews.
+
+#### Dependencies & Coordination
+- **Prereqs:** M10–M13 deliverables accepted; docs from prior milestones merged; observability stack stable post-M11; tuning job pipelines ready.
+- **Hand-offs:** Release notes and deployment runbooks delivered to DevOps and Support; marketing brief aligned with product messaging.
+
+#### Acceptance Criteria
+- All documentation, runbooks, and release notes reflect v0.2 capabilities and reference the `use context7` requirement.
+- Load/acceptance tests demonstrate performance and usability targets across interfaces with math tool and continual learning enabled.
+- Deployment artifacts and manifests pass validation for both cloud and local stacks with verified upgrade paths.
+- Monitoring, incident response, and support materials are signed off; governance approvals complete and recorded.
 
 ### Cross-Cutting Initiatives (v0.2)
 - [ ] Expand monitoring dashboards with GUI metrics, Python tool health, and tuning job status.

@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use async_trait::async_trait;
 use axum::{
     Json, Router,
@@ -38,14 +40,12 @@ pub struct TraceResponse {
     pub summary: String,
     pub trace_events: Vec<deepresearch_core::TraceEvent>,
     pub trace_summary: deepresearch_core::TraceSummary,
+    pub timeline: Vec<TimelinePoint>,
+    pub task_metrics: Vec<TaskMetric>,
+    pub artifacts: TraceArtifacts,
+    pub requires_manual: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub trace_path: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub explain_markdown: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub explain_mermaid: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub explain_graphviz: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -71,6 +71,37 @@ impl From<SessionMetrics> for CapacitySnapshot {
 pub struct ListSessionsResponse {
     pub sessions: Vec<SessionStatus>,
     pub capacity: CapacitySnapshot,
+}
+
+#[derive(Debug, Serialize)]
+pub struct TraceArtifacts {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub markdown: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mermaid: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub graphviz: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct TimelinePoint {
+    pub step_index: usize,
+    pub task_id: String,
+    pub message: String,
+    pub timestamp_ms: u128,
+    pub offset_ms: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration_ms: Option<u64>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct TaskMetric {
+    pub task_id: String,
+    pub occurrences: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub total_duration_ms: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub average_duration_ms: Option<u64>,
 }
 
 pub fn session_router() -> Router<AppState> {
@@ -109,6 +140,7 @@ async fn start_session(
         summary: None,
         error: None,
         trace_available: false,
+        requires_manual: false,
     });
 
     let response = StartSessionResponse {
@@ -136,18 +168,25 @@ async fn get_session_trace(
     Path(session_id): Path<String>,
 ) -> Result<Json<TraceResponse>, AppError> {
     if let Some(outcome) = state.session_service().outcome(&session_id) {
+        let timeline = build_timeline(&outcome.trace_events);
+        let task_metrics = build_task_metrics(&timeline);
         let response = TraceResponse {
             session_id: outcome.session_id.clone(),
             summary: outcome.summary.clone(),
             trace_events: outcome.trace_events.clone(),
             trace_summary: outcome.trace_summary.clone(),
+            timeline,
+            task_metrics,
+            artifacts: TraceArtifacts {
+                markdown: outcome.explain_markdown(),
+                mermaid: outcome.explain_mermaid(),
+                graphviz: outcome.explain_graphviz(),
+            },
+            requires_manual: outcome.requires_manual,
             trace_path: outcome
                 .trace_path
                 .as_ref()
                 .map(|path| path.display().to_string()),
-            explain_markdown: outcome.explain_markdown(),
-            explain_mermaid: outcome.explain_mermaid(),
-            explain_graphviz: outcome.explain_graphviz(),
         };
         return Ok(Json(response));
     }
@@ -178,6 +217,92 @@ async fn list_sessions(
     let sessions = service.list_sessions();
     let capacity = service.metrics().into();
     Ok(Json(ListSessionsResponse { sessions, capacity }))
+}
+
+fn build_timeline(events: &[deepresearch_core::TraceEvent]) -> Vec<TimelinePoint> {
+    if events.is_empty() {
+        return Vec::new();
+    }
+
+    let first_timestamp = events
+        .first()
+        .map(|event| event.timestamp_ms)
+        .unwrap_or_default();
+
+    events
+        .iter()
+        .enumerate()
+        .map(|(index, event)| {
+            let next_timestamp = events
+                .get(index + 1)
+                .map(|next| next.timestamp_ms)
+                .filter(|next| *next >= event.timestamp_ms);
+
+            let duration_ms = next_timestamp.map(|next| {
+                next.saturating_sub(event.timestamp_ms)
+                    .min(u64::MAX as u128) as u64
+            });
+
+            TimelinePoint {
+                step_index: index + 1,
+                task_id: event.task_id.clone(),
+                message: event.message.clone(),
+                timestamp_ms: event.timestamp_ms,
+                offset_ms: event
+                    .timestamp_ms
+                    .saturating_sub(first_timestamp)
+                    .min(u64::MAX as u128) as u64,
+                duration_ms,
+            }
+        })
+        .collect()
+}
+
+fn build_task_metrics(timeline: &[TimelinePoint]) -> Vec<TaskMetric> {
+    let mut order: Vec<String> = Vec::new();
+    let mut aggregates: HashMap<String, (usize, u128, usize)> = HashMap::new();
+
+    for point in timeline {
+        let entry = aggregates.entry(point.task_id.clone()).or_insert_with(|| {
+            order.push(point.task_id.clone());
+            (0usize, 0u128, 0usize)
+        });
+        entry.0 += 1;
+        if let Some(duration) = point.duration_ms {
+            entry.1 += duration as u128;
+            entry.2 += 1;
+        }
+    }
+
+    order
+        .into_iter()
+        .filter_map(|task_id| {
+            aggregates
+                .remove(&task_id)
+                .map(|(occurrences, total_duration, duration_samples)| {
+                    let total = if duration_samples > 0 {
+                        Some(total_duration.min(u64::MAX as u128) as u64)
+                    } else {
+                        None
+                    };
+                    let average = if duration_samples > 0 {
+                        Some(
+                            (total_duration / duration_samples as u128).min(u64::MAX as u128)
+                                as u64,
+                        )
+                    } else {
+                        None
+                    };
+
+                    TaskMetric {
+                        task_id,
+                        occurrences,
+                        total_duration_ms: total,
+                        average_duration_ms: average,
+                    }
+                })
+        })
+        .collect()
 }
 
 pub struct GuardedState(pub AppState);

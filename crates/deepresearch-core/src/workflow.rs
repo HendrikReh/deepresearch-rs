@@ -54,6 +54,7 @@ pub struct SessionOutcome {
     pub trace_events: Vec<TraceEvent>,
     pub trace_summary: TraceSummary,
     pub trace_path: Option<PathBuf>,
+    pub requires_manual: bool,
 }
 
 impl SessionOutcome {
@@ -148,6 +149,7 @@ fn build_outcome(
         trace_events: events,
         trace_summary,
         trace_path,
+        requires_manual,
     })
 }
 
