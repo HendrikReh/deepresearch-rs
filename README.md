@@ -18,17 +18,15 @@ Traditional AI demos optimise for flashy answers. DeepResearch optimises for **t
 - **Faithful reasoning**: Agents log plan rationales, tool calls, retrieval hits, and ablations so explanations reflect what actually happened.
 - **Governance ready**: Generates AIS-backed citations, PROV-O/OpenLineage provenance, model/data cards, and audit-friendly logs aligned with NIST AI RMF and EU AI Act transparency guidance.
 
-Think of DeepResearch as your flagship case study when a client or stakeholder asks: *“Can you show me Explainable AI that actually works?”*
-
 ---
 
 ## Highlights
-- 🧰 **Graph-first orchestration** — Researcher → Analyst → Critic (plus Attribution Verifier) modelled entirely with `graph-flow`.
-- 🔍 **Explainability everywhere** — Global and per-claim rationales, AIS support levels, faithfulness probes, counterfactual nudges.
-- 🧾 **Provenance exports** — PROV-O fragments, optional OpenLineage payloads, model/data cards, structured evaluation logs.
-- ⚙️ **Hybrid retrieval** — Dense (FastEmbed) + BM42 sparse vectors in Qdrant, with influence logging.
-- 🧪 **Evaluation harness** — Runtime metrics (coverage, faithfulness AUC, latency) plus CLI/CI utilities.
-- 🖥️ **Multi-surface delivery** — CLI commands, Axum API, Axum/Tailwind GUI (streaming evidence, timeline, metrics).
+- **Graph-first orchestration** — Researcher → Analyst → Critic (plus Attribution Verifier) modelled entirely with `graph-flow`.
+- **Explainability everywhere** — Global and per-claim rationales, AIS support levels, faithfulness probes, counterfactual nudges.
+- **Provenance exports** — PROV-O fragments, optional OpenLineage payloads, model/data cards, structured evaluation logs.
+- **Hybrid retrieval** — Dense (FastEmbed) + BM42 sparse vectors in Qdrant, with influence logging.
+- **Evaluation harness** — Runtime metrics (coverage, faithfulness AUC, latency) plus CLI/CI utilities.
+- **Multi-surface delivery** — CLI commands, Axum API, Axum/Tailwind GUI (streaming evidence, timeline, metrics).
 
 ---
 
@@ -121,9 +119,9 @@ Key components:
 | Milestone | Status | Highlights |
 | --- | --- | --- |
 | M0–M11 | ✅ | Graph foundations, observability, persistence, memory, explainability, CLI/API + GUI (Axum) |
-| **M12** – Math Tool Integration | ⏳ | Python sidecar (`MathToolTask`), structured math outputs, CI `pytest`, CLI/API/GUI support |
-| **M13** – Continual Learning & Governance | ⏳ | Session ETL, evaluation harness, weekly tuning job, governance docs & dashboards |
-| Future | 🧭 | Explanation QA in CI, explanation drift alerts, configurable disclosure packs |
+| **M12** – Math Tool Integration |   | Python sidecar (`MathToolTask`), structured math outputs, CI `pytest`, CLI/API/GUI support |
+| **M13** – Continual Learning & Governance |   | Session ETL, evaluation harness, weekly tuning job, governance docs & dashboards |
+| Future |   | Explanation QA in CI, explanation drift alerts, configurable disclosure packs |
 
 Full plan: [`PLAN.md`](PLAN.md)
 
