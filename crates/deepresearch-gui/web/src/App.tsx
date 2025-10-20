@@ -1,4 +1,4 @@
-import { ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { ChangeEvent, FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 type SessionState = "running" | "completed" | "failed";
 
@@ -402,33 +402,49 @@ const App = () => {
     URL.revokeObjectURL(href);
   };
 
-  const toggleOptions: Array<{ key: ArtifactVisibilityKey; label: string; disabled: boolean }> = [
-    {
-      key: "timeline",
-      label: "Timeline",
-      disabled: !traceTimeline || traceTimeline.length === 0
-    },
-    {
-      key: "metrics",
-      label: "Metrics",
-      disabled: !taskMetrics || taskMetrics.length === 0
-    },
-    {
-      key: "markdown",
-      label: "Markdown",
-      disabled: !traceArtifacts?.markdown
-    },
-    {
-      key: "mermaid",
-      label: "Graph",
-      disabled: !traceTimeline || traceTimeline.length === 0
-    },
-    {
-      key: "graphviz",
-      label: "Graphviz",
-      disabled: !traceArtifacts?.graphviz
-    }
+  const toggleOptions: Array<{ key: ArtifactVisibilityKey; label: string }> = [
+    { key: "timeline", label: "Timeline" },
+    { key: "metrics", label: "Metrics" },
+    { key: "markdown", label: "Markdown" },
+    { key: "mermaid", label: "Graph" },
+    { key: "graphviz", label: "Graphviz" }
   ];
+
+  const artifactDescriptions: Record<ArtifactVisibilityKey, string> = {
+    timeline: "timeline data from the completed trace",
+    metrics: "per-task latency metrics",
+    markdown: "markdown-formatted explainability summary",
+    mermaid: "graph representation of the reasoning steps",
+    graphviz: "Graphviz trace diagram"
+  };
+
+  const artifactHasContent = useCallback(
+    (key: ArtifactVisibilityKey) => {
+      const hasTimeline = traceTimeline && traceTimeline.length > 0;
+      const hasMetrics = taskMetrics && taskMetrics.length > 0;
+      const markdown = traceArtifacts?.markdown?.trim();
+      const mermaid = traceArtifacts?.mermaid?.trim();
+      const graphviz = traceArtifacts?.graphviz?.trim();
+
+      switch (key) {
+        case "timeline":
+          return !!hasTimeline;
+        case "metrics":
+          return !!hasMetrics;
+        case "markdown":
+          return !!(markdown && markdown.length > 0);
+        case "mermaid":
+          return !!(mermaid && mermaid.length > 0);
+        case "graphviz":
+          return !!(graphviz && graphviz.length > 0);
+        default:
+          return false;
+      }
+    },
+    [traceTimeline, taskMetrics, traceArtifacts]
+  );
+
+  const [activeTooltip, setActiveTooltip] = useState<string | null>(null);
 
   const downloadOptions: Array<{
     key: "markdown" | "mermaid" | "graphviz";
@@ -842,39 +858,80 @@ const App = () => {
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2">
-                  {toggleOptions.map(({ key, label, disabled }) => (
-                    <button
-                      key={key}
-                      type="button"
-                      disabled={disabled}
-                      onClick={() => toggleArtifact(key)}
-                      className={`rounded-md border px-3 py-1 text-xs font-semibold transition ${
-                        artifactVisibility[key]
-                          ? "border-primary bg-primary text-white"
-                          : "border-slate-700 text-slate-300 hover:border-primary hover:text-primary"
-                      } disabled:cursor-not-allowed disabled:border-slate-800 disabled:text-slate-600`}
-                    >
-                      {artifactVisibility[key] ? "Hide" : "Show"} {label}
-                    </button>
-                  ))}
+                  {toggleOptions.map(({ key, label }) => {
+                    const hasContent = artifactHasContent(key);
+                    const action = artifactVisibility[key] ? "Hide" : "Show";
+                    const tooltipText = hasContent
+                      ? `${action} ${label}`
+                      : `Artifact pending: ${artifactDescriptions[key]}. Toggle remains available for preview.`;
+                    const tooltipKey = `toggle-${key}`;
+                    return (
+                      <div key={key} className="relative inline-flex">
+                        <button
+                          type="button"
+                          onClick={() => toggleArtifact(key)}
+                          onMouseEnter={() => setActiveTooltip(tooltipKey)}
+                          onMouseLeave={() =>
+                            setActiveTooltip((current) => (current === tooltipKey ? null : current))
+                          }
+                          onFocus={() => setActiveTooltip(tooltipKey)}
+                          onBlur={() =>
+                            setActiveTooltip((current) => (current === tooltipKey ? null : current))
+                          }
+                          className={`rounded-md border px-3 py-1 text-xs font-semibold transition ${
+                            artifactVisibility[key]
+                              ? "border-primary bg-primary text-white"
+                              : "border-slate-700 text-slate-300 hover:border-primary hover:text-primary"
+                          } ${hasContent ? "" : "opacity-60"}`}
+                          aria-pressed={artifactVisibility[key]}
+                        >
+                          {artifactVisibility[key] ? "Hide" : "Show"} {label}
+                        </button>
+                        {activeTooltip === tooltipKey && (
+                          <div className="absolute left-1/2 top-full z-20 mt-2 w-56 -translate-x-1/2 rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-slate-200 shadow-lg">
+                            {tooltipText}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2">
-                  {downloadOptions.map(({ key, label, extension, content }) => (
-                    <button
-                      key={key}
-                      type="button"
-                      disabled={!content}
-                      onClick={() => {
-                        if (content) {
-                          downloadArtifact(`${sessionSlug}.${extension}`, content);
-                        }
-                      }}
-                      className="rounded-md border border-slate-700 px-3 py-1 text-xs font-medium text-slate-200 transition hover:border-primary hover:text-primary disabled:cursor-not-allowed disabled:border-slate-800 disabled:text-slate-600"
-                    >
-                      {label}
-                    </button>
-                  ))}
+                  {downloadOptions.map(({ key, label, extension, content }) => {
+                    const tooltipKey = `download-${key}`;
+                    return (
+                      <div key={key} className="relative inline-flex">
+                        <button
+                          type="button"
+                          disabled={!content}
+                          onClick={() => {
+                            if (content) {
+                              downloadArtifact(`${sessionSlug}.${extension}`, content);
+                            }
+                          }}
+                          onMouseEnter={() => setActiveTooltip(tooltipKey)}
+                          onMouseLeave={() =>
+                            setActiveTooltip((current) => (current === tooltipKey ? null : current))
+                          }
+                          onFocus={() => setActiveTooltip(tooltipKey)}
+                          onBlur={() =>
+                            setActiveTooltip((current) => (current === tooltipKey ? null : current))
+                          }
+                          className="rounded-md border border-slate-700 px-3 py-1 text-xs font-medium text-slate-200 transition hover:border-primary hover:text-primary disabled:cursor-not-allowed disabled:border-slate-800 disabled:text-slate-600"
+                        >
+                          {label}
+                        </button>
+                        {activeTooltip === tooltipKey && (
+                          <div className="absolute left-1/2 top-full z-20 mt-2 w-56 -translate-x-1/2 rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-slate-200 shadow-lg">
+                            {content
+                              ? `Download ${label} artifact`
+                              : `${label} artifact not generated for this session yet.`}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
 
                 {artifactVisibility.timeline && traceTimeline && traceTimeline.length > 0 && (
