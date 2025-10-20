@@ -76,7 +76,7 @@ This plan aligns with the consolidated PRD (`PRD.md`) and preserves the history 
 - [x] Maintain `AGENTS.md` when adding/removing context keys or tasks (updated with CI commands).
 - [x] Keep `docs/TESTING_GUIDE.md` aligned with the active milestone.
 
-### M10 — Axum GUI Foundations
+### M10 — Axum GUI Foundations ✅
 
 #### Backend & Infrastructure
 - [x] Scaffold the standalone `deepresearch-gui` crate with Axum routing, shared session orchestrator wiring, and Tailwind/Vite asset pipeline. *(Owner: Platform)*
@@ -104,7 +104,7 @@ This plan aligns with the consolidated PRD (`PRD.md`) and preserves the history 
 - Authentication + session selection works against both in-memory and Postgres storage with enforced concurrency caps.
 - CI job suite covers HTTP/WebSocket smoke tests and front-end asset compile; docs updated for contributors and operators.
 
-### M11 — GUI Explainability & Observability
+### M11 — GUI Explainability & Observability ✅
 
 #### Visualization Experience
 - [x] Render an interactive reasoning DAG sourced from `TraceCollector` JSON (pan/zoom, task hover details, branch highlighting).
