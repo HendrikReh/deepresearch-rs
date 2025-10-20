@@ -6,7 +6,7 @@ DeepResearch is a graph-driven, Rust-first AI Research Assistant that proves eve
 ![Version](https://img.shields.io/badge/version-0.2.1-informational.svg)
 [![Rust Edition](https://img.shields.io/badge/Rust-2024-blue.svg)](https://www.rust-lang.org/)
 [![OpenAI](https://img.shields.io/badge/OpenAI-Integration-brightgreen.svg)](https://openai.com)
-[![Collaboration](https://img.shields.io/badge/Collaboration-Welcome-orange.svg)](https://github.com/your-org/deepresearch-rs/contribute)
+[![Collaboration](https://img.shields.io/badge/Collaboration-Welcome-orange.svg)](CONTRIBUTING.md)
 [![License](https://img.shields.io/badge/License-GPL--3.0--or--later-purple.svg)](LICENSE)
 ![XAI Badge](https://img.shields.io/badge/XAI-NISTIR%208312%20Aligned-blueviolet)
 
