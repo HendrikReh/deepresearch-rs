@@ -1,4 +1,4 @@
-# 🧠 DeepResearch XAI PRD (v0.1.X)
+# DeepResearch XAI PRD (v0.2.1)
 
 ## Table of Contents
 - [1. Vision](#1-vision)

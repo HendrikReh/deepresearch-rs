@@ -1,6 +1,6 @@
 # DeepResearch Roadmap (v0.2.1)
 
-This plan aligns with the consolidated PRD (`PRD.md`) and preserves the history of completed GraphFlow milestones. Update checkboxes and notes as work evolves.
+This plan preserves the history of completed project milestones. Update checkboxes and notes as work evolves.
 
 ---
 
