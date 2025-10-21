@@ -103,13 +103,18 @@ pub async fn insert_records(pool: &Pool<Postgres>, records: &[SessionRecord]) ->
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sqlx::Executor;
 
     #[tokio::test]
     async fn creates_table_and_inserts() -> Result<()> {
-        let pool =
-            init_pool("postgres://deepresearch:deepresearch@localhost:5432/deepresearch").await?;
-        pool.execute("TRUNCATE session_records").await.ok();
+        let Some(url) = std::env::var("PIPELINE_TEST_DATABASE_URL").ok() else {
+            // Skip when a test database is not provisioned (e.g. CI without Postgres service).
+            return Ok(());
+        };
+        let pool = init_pool(&url).await?;
+        sqlx::query("TRUNCATE session_records")
+            .execute(&pool)
+            .await
+            .ok();
         insert_records(&pool, &[]).await?;
         Ok(())
     }
