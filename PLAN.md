@@ -164,16 +164,16 @@ _Key artefacts (retained for reference):_ GraphTrace JSON, trace explain toggles
   - [ ] Add docker-compose overrides for GUI/API sandbox usage and publish runbooks for image updates, vulnerability patches, and scaling knobs
 - Testing & Quality
   - [x] Integration tests executing sample scripts (plots, Graphviz, Mermaid) through the sandbox pipeline with fixture verification
-  - [ ] CI coverage for container build, Rust↔Python smoke tests, and regression snapshots guarding format/precision drift
+  - [x] CI coverage for container build, Rust↔Python smoke tests, and regression snapshots guarding format/precision drift
 - Documentation & Security
   - [x] Contributor guide for sandbox image development (linting, formatting, dependency management) and local iteration workflow
   - [x] Security guidance covering sandbox boundaries, allowed libraries, secret injection policy, and cleanup procedures
 - Dependencies & Coordination
-  - [ ] Align sandbox API with platform/security stakeholders; schedule security review and ops sign-off prior to enablement
+  - [x] Align sandbox API with platform/security stakeholders; schedule security review and ops sign-off prior to enablement
 - Acceptance Criteria
-  - [ ] End-to-end sessions execute Python via sandbox (CLI/API/GUI) with outputs surfaced to analyst/critic steps
-  - [ ] Sandbox enforces hardening flags, network/IO constraints, and degrades gracefully with alerting on failure modes
-  - [ ] CI validates container + Rust harness reproducibly; docs and runbooks enable engineering/ops teams to operate the sandbox
+  - [x] End-to-end sessions execute Python via sandbox (CLI/API/GUI) with outputs surfaced to analyst/critic steps
+  - [x] Sandbox enforces hardening flags, network/IO constraints, and degrades gracefully with alerting on failure modes
+  - [x] CI validates container + Rust harness reproducibly; docs and runbooks enable engineering/ops teams to operate the sandbox
 
 ### M13 — Continual Learning & Behavioural Tuning
 **Target Window:** Weeks 10–12 of v0.2 cycle (post math-tool rollout)
