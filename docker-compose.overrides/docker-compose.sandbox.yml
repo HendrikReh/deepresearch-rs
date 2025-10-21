@@ -1,0 +1,45 @@
+version: "3.9"
+
+services:
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.96.0
+    command: ["--config=/etc/otel/collector.yaml"]
+    volumes:
+      - ./ops/otel/collector.yaml:/etc/otel/collector.yaml:ro
+      - sandbox-logs:/var/log/deepresearch:ro
+    ports:
+      - "4318:4318"
+      - "9464:9464"
+    depends_on:
+      - sandbox
+
+  sandbox:
+    image: deepresearch-python-sandbox:latest
+    profiles: [sandbox]
+    entrypoint: ["/bin/sh", "-c", "sleep infinity"]
+    volumes:
+      - sandbox-logs:/var/log/deepresearch
+
+  api:
+    image: deepresearch-api:latest
+    environment:
+      DEEPRESEARCH_OTEL_METRICS_ENDPOINT: "http://otel-collector:4318"
+      RUST_LOG: info
+    ports:
+      - "8080:8080"
+    volumes:
+      - sandbox-logs:/var/log/deepresearch
+    depends_on:
+      - qdrant
+      - otel-collector
+
+  cli-runner:
+    image: deepresearch-cli:latest
+    profiles: [sandbox]
+    entrypoint: ["/bin/sh", "-c", "sleep infinity"]
+    volumes:
+      - sandbox-logs:/var/log/deepresearch
+
+volumes:
+  sandbox-logs:
+    driver: local

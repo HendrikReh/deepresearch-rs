@@ -125,6 +125,14 @@ This guide consolidates recommended verification steps for the DeepResearch stac
 7. Trigger `deepresearch-cli purge <SESSION>` and confirm session traces + logs deleted.
 8. Re-run the snapshot test (`cargo test --offline -p deepresearch-core finalize_summary_snapshot`) after modifying summary formatting to ensure expected output.
 
+### Sandbox Integration Suite (optional)
+- Build and run the extended sandbox checks:
+  ```bash
+  docker build -t deepresearch-python-sandbox:latest -f containers/python-sandbox/Dockerfile .
+  DEEPRESEARCH_SANDBOX_TESTS=1 cargo test -p deepresearch-core --test integration_sandbox -- --ignored --nocapture
+  ```
+- This mirrors the GitHub Actions `sandbox` job, exercising Matplotlib, Graphviz, and Mermaid pipelines end-to-end.
+
 ---
 
 ## 6. Future Automation Wishlist

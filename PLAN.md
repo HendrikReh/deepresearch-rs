@@ -153,8 +153,8 @@ _Key artefacts (retained for reference):_ GraphTrace JSON, trace explain toggles
   - [x] Run containers with `--cap-drop=ALL`, minimal `--cap-add`, `--security-opt no-new-privileges`, `--read-only`, and tmpfs mounts for `/tmp`, `/var/tmp`, `/run`
   - [x] Enforce CPU/memory limits, disable networking, and standardize `/workspace` bind-mount lifecycle per execution
 - Headless Execution Validation
-  - [ ] Verify Matplotlib/Graphviz/NetworkX outputs PNG/SVG/PDF in headless mode and snapshot representative artifacts
-  - [ ] Gate Mermaid CLI rendering (inline and sidecar) with automated checks for `.mmd` → PNG/SVG/PDF conversions
+  - [x] Verify Matplotlib/Graphviz/NetworkX outputs PNG/SVG/PDF in headless mode and snapshot representative artifacts
+  - [x] Gate Mermaid CLI rendering (inline and sidecar) with automated checks for `.mmd` → PNG/SVG/PDF conversions
 - Workflow Integration
   - [x] Implement Rust sandbox orchestrator (Bollard or CLI wrapper) to prepare temp dirs, run scripts, stream logs, and clean up outputs
   - [x] Route Researcher/Analyst flows through sandbox execution and writing `math.*` context keys
@@ -163,7 +163,7 @@ _Key artefacts (retained for reference):_ GraphTrace JSON, trace explain toggles
   - [x] Emit sandbox health/readiness metrics (latency, exit status, resource usage) via OTEL; alert on repeated failures
   - [ ] Add docker-compose overrides for GUI/API sandbox usage and publish runbooks for image updates, vulnerability patches, and scaling knobs
 - Testing & Quality
-  - [ ] Integration tests executing sample scripts (plots, Graphviz, Mermaid) through the sandbox pipeline with fixture verification
+  - [x] Integration tests executing sample scripts (plots, Graphviz, Mermaid) through the sandbox pipeline with fixture verification
   - [ ] CI coverage for container build, Rust↔Python smoke tests, and regression snapshots guarding format/precision drift
 - Documentation & Security
   - [x] Contributor guide for sandbox image development (linting, formatting, dependency management) and local iteration workflow

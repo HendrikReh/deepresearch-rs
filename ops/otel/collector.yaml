@@ -1,0 +1,24 @@
+receivers:
+  filelog/sandbox:
+    include: [/var/log/deepresearch/*.log]
+    operators:
+      - type: json_parser
+        parse_from: body
+      - type: filter
+        expr: 'attributes["target"] == "telemetry.sandbox"'
+
+processors:
+  batch: {}
+
+exporters:
+  otlphttp/default:
+    endpoint: http://otel-gateway:4318
+  prometheus/default:
+    endpoint: 0.0.0.0:9464
+
+service:
+  pipelines:
+    logs/sandbox:
+      receivers: [filelog/sandbox]
+      processors: [batch]
+      exporters: [otlphttp/default, prometheus/default]

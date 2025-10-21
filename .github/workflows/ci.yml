@@ -119,3 +119,9 @@ jobs:
           DEEPRESEARCH_SANDBOX_TESTS: "1"
           DEEPRESEARCH_SANDBOX_IMAGE: "deepresearch-python-sandbox:ci"
         run: cargo test -p deepresearch-core --test sandbox -- --ignored --nocapture
+
+      - name: Integration sandbox test
+        env:
+          DEEPRESEARCH_SANDBOX_TESTS: "1"
+          DEEPRESEARCH_SANDBOX_IMAGE: "deepresearch-python-sandbox:ci"
+        run: cargo test -p deepresearch-core --test integration_sandbox -- --ignored --nocapture
