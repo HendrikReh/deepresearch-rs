@@ -29,8 +29,18 @@ jobs:
       - name: Consolidate session records
         env:
           DEEPRESEARCH_PIPELINE_DIR: data/pipeline/raw
+          DATABASE_URL: ${{ secrets.PIPELINE_DATABASE_URL }}
         run: |
-          cargo run -p data-pipeline -- data/pipeline/raw data/pipeline/curated
+          if [ -n "$DATABASE_URL" ]; then
+            cargo run -p data-pipeline -- \
+              --raw-dir data/pipeline/raw \
+              --output-dir data/pipeline/curated \
+              --postgres-url "$DATABASE_URL"
+          else
+            cargo run -p data-pipeline -- \
+              --raw-dir data/pipeline/raw \
+              --output-dir data/pipeline/curated
+          fi
 
       - name: List curated artefacts
         run: ls -R data/pipeline/curated || true

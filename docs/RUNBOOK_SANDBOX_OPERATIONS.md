@@ -54,27 +54,45 @@
 - Each record includes: query, verdict, manual-review flag, math status/outputs, trace path, consent flag (future).
 
 ### Consolidation Utility
-- Consolidate to Parquet:
+- Consolidate raw JSONL to curated snapshot (plus optional Postgres insert):
   ```bash
-  cargo run -p data-pipeline -- data/pipeline/raw data/pipeline/curated
+  cargo run -p data-pipeline -- \
+    --raw-dir data/pipeline/raw \
+    --output-dir data/pipeline/curated \
+    --postgres-url $DATABASE_URL   # optional
   ```
 - Filters out sessions where `consent_provided=false`.
-- Output: `data/pipeline/curated/sessions_<timestamp>.parquet`.
+- Output: `data/pipeline/curated/sessions_<timestamp>.json` (and DB rows when configured).
 
 ### Nightly Automation
 - GitHub Actions workflow: `.github/workflows/data-pipeline.yml`
   - Runs daily at 03:00 UTC
-  - Uploads curated Parquet as artifact (consume or ship to storage backend).
+  - Uploads curated JSON snapshot as artifact (consume or ship to storage backend).
+  - Inserts records into Postgres when `PIPELINE_DATABASE_URL` secret provided.
 - TODO: integrate with storage backend (S3, GCS) and retention policy.
 
 ### Ground Truth Enrichment
 - Tag sessions with taxonomy labels using CLI tool (future work).
 - Ensure retention/redaction policies align with governance requirements.
 
+## Evaluation Harness (M13)
+
+- Manual replay:
+  ```bash
+  cargo run -p eval-harness -- \
+    --input data/pipeline/curated/sessions_latest.json \
+    --limit 20 \
+    --replay cargo --replay run --replay --offline --replay -p --replay deepresearch-cli --replay query --replay --format --replay json
+  ```
+- Generates `data/eval/latest/report.json` with overall metrics, per-bucket breakdowns, and per-session deltas.
+- Investigate non-zero `verdict_changed`/`math_status_changed` counts before promoting a new build.
+- Weekly GitHub Action: `.github/workflows/evaluation.yml` (Mondays 04:00 UTC) replays the latest snapshot and uploads report artefact.
+- Future work: enforce regression thresholds (fail pipeline when deltas exceed tolerances) and export to analytics dashboards/storage.
+
 ## Upgrade Checklist
 - [ ] `cargo check`
 - [ ] Sandbox smoke & integration tests
 - [ ] Rebuild sandbox image
 - [ ] Run data pipeline consolidation (manual or nightly job)
+- [ ] Execute evaluation harness on curated snapshot
 - [ ] Update runbook/docs with changes
-

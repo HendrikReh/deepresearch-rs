@@ -1,40 +1,37 @@
 # M13 Data Pipeline — Session Record Contract
 
 ## Goal
-Establish a durable, consent-aware session dataset capturing agent verdicts, math outputs, and telemetry required for continual learning and behavioural tuning.
+Establish a durable, consent-aware session dataset capturing agent verdicts, math outputs, telemetry, and taxonomy required for continual learning.
 
 ## Record Schema (JSON)
 | Field | Type | Description |
 |-------|------|-------------|
 | `session_id` | string | Unique identifier for the workflow run |
-| `timestamp` | string (RFC3339) | Completion time captured when record is written |
+| `timestamp` | string (RFC3339) | Completion time when record persisted |
 | `query` | string | Original user query (auto-prefixed with `use context7`) |
-| `verdict` | string | Final critic verdict (`critique.verdict`) |
-| `requires_manual_review` | bool | Whether manual branch triggered |
-| `math_status` | string | `math.status` captured from `MathToolTask` |
-| `math_alert_required` | bool | True when sandbox degraded (`math.alert_required`) |
-| `math_outputs` | array<object> | Subset of `math.outputs` with `path`, `kind`, and base64 `bytes` (optional) |
-| `math_stdout` / `math_stderr` | string | Captured stdout/stderr from math task |
-| `sandbox_failure_streak` | integer | Consecutive failure streak at completion |
-| `consent_provided` | bool | Whether session eligible for training (future flag) |
-| `trace_path` | string | Local path to persisted trace (if available) |
+| `verdict` | string | Critic verdict (`critique.verdict`) |
+| `requires_manual_review` | bool | Whether manual-review branch triggered |
+| `math_status` | string | `math.status` (`success`, `failure`, `timeout`, `skipped`) |
+| `math_alert_required` | bool | Mirrors `math.alert_required` |
+| `math_stdout` / `math_stderr` | string | Captured math tool output (truncated) |
+| `math_outputs[]` | array | Artefact summary (path, kind, bytes length) |
+| `trace_path` | string? | Local path to persisted trace file |
+| `sandbox_failure_streak` | number | Consecutive sandbox failures at time of record |
+| `domain_label` | string? | (Future) Domain taxonomy label |
+| `confidence_bucket` | string? | (Future) Bucketed verdict confidence |
+| `consent_provided` | bool? | Flag enabling training usage (default true) |
 
 ## Storage Strategy
-- Records appended to JSONL under `data/pipeline/raw/<YYYY-MM-DD>.jsonl`
-- Directory configurable via `DEEPRESEARCH_PIPELINE_DIR`
-- High-water mark trimming handled by downstream ETL job (future milestone)
+- Raw records: `data/pipeline/raw/<YYYY-MM-DD>.jsonl` (append-only, configurable via `DEEPRESEARCH_PIPELINE_DIR`).
+- Curated store: timestamped JSON snapshots in `data/pipeline/curated/` produced by `data-pipeline` crate (optional Postgres insertion when `--postgres-url` supplied).
+- Retention & consent enforcement handled downstream.
 
-## Downstream Utility (M13 Scope)
-- Merge raw JSONL → governed Parquet/CSV (`data/curated/`) with consent filter
-- Attach taxonomy labels (domain, confidence tier, manual review) during consolidation
-- Provide CLI/automation entrypoint (GitHub Action TBD)
+## Tooling Overview
+- `persist_session_record` (core crate) writes JSONL on session completion.
+- `data-pipeline` crate reads raw records, filters on consent, writes JSON snapshot + optional Postgres insert (see `.github/workflows/data-pipeline.yml`).
+- Future: taxonomy enrichment + outcome labels integrated during consolidation.
 
-## Security & Compliance
-- Raw logs respect existing retention defaults; governed store inherits consent flag
-- Sensitive fields (PII, secrets) already redacted upstream (see sandbox runbook)
-- Access controlled via existing log storage ACLs
-
-## Open Questions
-- Should math artefacts be stored inline (base64) or persisted to object storage with references?
-- How to handle large outputs / binary artefacts without bloating JSONL?
-- Governance workflow for deleting records when consent revoked?
+## Security / Compliance
+- Raw JSONL inherits existing log retention; curated store subject to governed retention.
+- Ensure artefacts with sensitive content either excluded or redacted before export.
+- Maintain audit trail of access to curated datasets.
