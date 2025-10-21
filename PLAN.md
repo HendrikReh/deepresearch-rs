@@ -143,36 +143,37 @@ _Key artefacts (retained for reference):_ GraphTrace JSON, trace explain toggles
 
 ## Active Milestones
 
-### M12 — Python Tool Integration (Math & Stats)
+### M12 — Secure Docker Sandbox for Python Execution
 **Target Window:** Weeks 7–9 of v0.2 cycle
 
-- Architecture & Platform
-  - [ ] Decide embedded `pyo3` vs. sidecar microservice (sandboxing, quotas, restart semantics)
-  - [ ] Define `MathToolRequest` / `MathToolResponse` schema + error taxonomy (Rust ↔ Python)
-  - [ ] Package strategy (Docker image + optional virtualenv) with reproducible builds
+- Container Image & Dependencies
+  - [ ] Build `python:3.11-slim`-based image with Graphviz, Node/NPM, headless Chromium deps, and non-root `sandbox` user
+  - [ ] Bundle Python libraries (matplotlib, networkx, pandas/polars, pygraphviz/pydot) and install `@mermaid-js/mermaid-cli` with Puppeteer prerequisites
+- Sandbox Hardening & Runtime Guards
+  - [ ] Run containers with `--cap-drop=ALL`, minimal `--cap-add`, `--security-opt no-new-privileges`, `--read-only`, and tmpfs mounts for `/tmp`, `/var/tmp`, `/run`
+  - [ ] Enforce CPU/memory limits, disable networking, and standardize `/workspace` bind-mount lifecycle per execution
+- Headless Execution Validation
+  - [ ] Verify Matplotlib/Graphviz/NetworkX outputs PNG/SVG/PDF in headless mode and snapshot representative artifacts
+  - [ ] Gate Mermaid CLI rendering (inline and sidecar) with automated checks for `.mmd` → PNG/SVG/PDF conversions
 - Workflow Integration
-  - [ ] Implement `MathToolTask` that preserves `use context7` prefix and writes `math.*` context keys
-  - [ ] Route Researcher/Analyst through math tool; ensure Critic consumes structured outputs (values, units, confidence)
-  - [ ] Add timeout / retry / graceful degradation path when Python is unavailable
+  - [ ] Implement Rust sandbox orchestrator (Bollard or CLI wrapper) to prepare temp dirs, run scripts, stream logs, and clean up outputs
+  - [ ] Route Researcher/Analyst flows through sandbox execution and writing `sandbox.*`/`math.*` context keys
+  - [ ] Handle failure modes (timeouts, non-zero exit, missing outputs) with retries and graceful degradation paths
 - Reliability & Operations
-  - [ ] Health + readiness probes for Python service (latency/error/concurrency metrics via OTEL)
-  - [ ] Docker-compose overrides for GUI + API + Python + data services (local full-stack)
-  - [ ] Runbooks for dependency upgrades, vulnerability patches, independent scaling
-- Quality & Testing
-  - [ ] Integration tests for representative math workloads (regression, summary stats, error propagation)
-  - [ ] Extend CI: `pytest` suite + Rust↔Python smoke test (`cargo test --offline`)
-  - [ ] Snapshot critical math responses to catch precision/formatting regressions
-- Documentation & Enablement
-  - [ ] Contributor guide for Python service (venv, lint, formatting)
-  - [ ] API examples for math-heavy queries (CLI/API/GUI)
-  - [ ] Security guidance (sandboxing limits, allowed libraries, secret injection)
+  - [ ] Emit sandbox health/readiness metrics (latency, exit status, resource usage) via OTEL; alert on repeated failures
+  - [ ] Add docker-compose overrides for GUI/API sandbox usage and publish runbooks for image updates, vulnerability patches, and scaling knobs
+- Testing & Quality
+  - [ ] Integration tests executing sample scripts (plots, Graphviz, Mermaid) through the sandbox pipeline with fixture verification
+  - [ ] CI coverage for container build, Rust↔Python smoke tests, and regression snapshots guarding format/precision drift
+- Documentation & Security
+  - [ ] Contributor guide for sandbox image development (linting, formatting, dependency management) and local iteration workflow
+  - [ ] Security guidance covering sandbox boundaries, allowed libraries, secret injection policy, and cleanup procedures
 - Dependencies & Coordination
-  - [ ] Align Math Tool API with analytics stakeholders; schedule security review prior to rollout
+  - [ ] Align sandbox API with platform/security stakeholders; schedule security review and ops sign-off prior to enablement
 - Acceptance Criteria
-  - [ ] End-to-end sessions use math tool (CLI/API/GUI) with outputs in analyst/critic steps
-  - [ ] Failure modes (timeouts/invalid input) degrade gracefully with alerts
-  - [ ] CI validates Python + Rust suites; build artifacts reproducible
-  - [ ] Docs + runbooks enable engineers/ops to operate and troubleshoot the Python service
+  - [ ] End-to-end sessions execute Python via sandbox (CLI/API/GUI) with outputs surfaced to analyst/critic steps
+  - [ ] Sandbox enforces hardening flags, network/IO constraints, and degrades gracefully with alerting on failure modes
+  - [ ] CI validates container + Rust harness reproducibly; docs and runbooks enable engineering/ops teams to operate the sandbox
 
 ### M13 — Continual Learning & Behavioural Tuning
 **Target Window:** Weeks 10–12 of v0.2 cycle (post math-tool rollout)

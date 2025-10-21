@@ -105,6 +105,7 @@ Result Assembler ──► Report + Explanations + Provenance
 | Graph-Flow Executor | Execute/monitor DAG tasks | `graph-flow` |
 | Planner Agent | Build task graph, assign roles | Custom module |
 | Agents | Role-specific LLM sub-tasks | OpenAI GPT-5 / Ollama |
+| Secure Sandbox Runner | Execute untrusted Python code for math/stats tooling with strict isolation | Docker (`python:3.11-slim`), Bollard/CLI wrapper, hardened runtime flags |
 | Vector DB | Memory + retrieval | Qdrant (dense + sparse) |
 | Hybrid Embedding Engine | Dense + BM42 vectors | FastEmbed (optional ColBERT reranker) |
 | XAI Trace Collector | Capture plan/tool/retrieval events | Custom module |
@@ -116,6 +117,7 @@ Result Assembler ──► Report + Explanations + Provenance
 - Fact Checker ↔ Retrieval: `claim_id`, expected sources; fall back to cached embeddings on failure.
 - Trace Collector flushes events if consumers don’t ack within 500 ms.
 - Node failures emit `TaskError { reason, retryable }` with exponential backoff retries.
+- Sandbox orchestrator prepares per-run volumes, enforces read-only/rootless execution, captures outputs, and emits health metrics.
 
 ### 7.3 Provenance Schemas
 - **PROV-O**: `prov:Entity` (source/snippet/embedding), `prov:Activity` (retrieval/synthesis), `prov:Agent` (Researcher/Analyst/Critic).
@@ -154,8 +156,10 @@ Result Assembler ──► Report + Explanations + Provenance
 - PROV/O and OpenLineage exports for audits.
 - CLI `--explain` renders plan graph; GUI highlights evidence and counterfactual sliders (v0.2).
 
-### 8.8 Future Math & Quant Modules
-- Python tool integration will emit formulas, inputs, sensitivity analyses, cached plots.
+### 8.8 Python Math Sandbox
+- Hardened Docker sandbox executes Python tooling (formulas, stats, plotting) with pre-baked libraries (Matplotlib, NetworkX, Pandas, Mermaid CLI).
+- Rust orchestrator mounts ephemeral workspace, captures outputs (PNG/SVG/PDF) and error taxonomy.
+- Roadmap: expand to additional quant libraries, sidecar retriever ingestion, and cached artefact reuse.
 
 ## 9. Explainability Programme
 - **Global explanations**: plan rationale, trade-offs, knowledge limits.
@@ -189,6 +193,7 @@ Result Assembler ──► Report + Explanations + Provenance
 - Per-user purge (`deepresearch purge --session <ID>`).
 - Environment-only secrets; config forbids inline credentials.
 - Default trace retention 30 days; logs 90 days; policies configurable for EU AI Act readiness.
+- Secure Docker sandbox disables networking, drops Linux capabilities, enforces read-only rootfs with tmpfs scratch space, and logs sandbox health metrics.
 - Hooks for ISO/IEC 42001-style governance.
 
 ## 14. Performance & Operational Excellence
@@ -199,7 +204,7 @@ Result Assembler ──► Report + Explanations + Provenance
 
 ## 15. Deployment & Packaging
 - Components: Rust binary (agent + CLI + API), Qdrant, optional Ollama.
-- Docker Compose template for local/full-stack setups.
+- Docker Compose template for local/full-stack setups (includes hardened Python sandbox image and optional Mermaid sidecar).
 - Optional OpenLineage emitter + provenance/evaluation volumes.
 - `OFFLINE_MODE=true` disables web retrieval and marks AIS as N/A.
 - Managed container playbook documents build pipeline, telemetry hooks, monitoring.
@@ -236,6 +241,7 @@ Result Assembler ──► Report + Explanations + Provenance
 - `hybrid_retrieval.rs` (dense + BM42 + optional ColBERT logging)
 - Qdrant schema migration (sparse vectors, retrieval hashes, `used_by_claims` backfill)
 - CLI/API enhancements for cards, claim explanations, provenance export
+- Docker sandbox image + orchestrator (image hardening, Bollard wrapper, integration tests)
 
 ## 19. UX Writing & Artefact Guidelines
 - Lead with decision, explain why, cite evidence, then state limits/what-ifs.
