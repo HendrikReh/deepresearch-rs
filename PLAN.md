@@ -147,17 +147,17 @@ _Key artefacts (retained for reference):_ GraphTrace JSON, trace explain toggles
 **Target Window:** Weeks 7–9 of v0.2 cycle
 
 - Container Image & Dependencies
-  - [ ] Build `python:3.11-slim`-based image with Graphviz, Node/NPM, headless Chromium deps, and non-root `sandbox` user
-  - [ ] Bundle Python libraries (matplotlib, networkx, pandas/polars, pygraphviz/pydot) and install `@mermaid-js/mermaid-cli` with Puppeteer prerequisites
+  - [x] Build `python:3.11-slim`-based image with Graphviz, Node/NPM, headless Chromium deps, and non-root `sandbox` user
+  - [x] Bundle Python libraries (matplotlib, networkx, pandas/polars, pygraphviz/pydot) and install `@mermaid-js/mermaid-cli` with Puppeteer prerequisites
 - Sandbox Hardening & Runtime Guards
-  - [ ] Run containers with `--cap-drop=ALL`, minimal `--cap-add`, `--security-opt no-new-privileges`, `--read-only`, and tmpfs mounts for `/tmp`, `/var/tmp`, `/run`
-  - [ ] Enforce CPU/memory limits, disable networking, and standardize `/workspace` bind-mount lifecycle per execution
+  - [x] Run containers with `--cap-drop=ALL`, minimal `--cap-add`, `--security-opt no-new-privileges`, `--read-only`, and tmpfs mounts for `/tmp`, `/var/tmp`, `/run`
+  - [x] Enforce CPU/memory limits, disable networking, and standardize `/workspace` bind-mount lifecycle per execution
 - Headless Execution Validation
   - [ ] Verify Matplotlib/Graphviz/NetworkX outputs PNG/SVG/PDF in headless mode and snapshot representative artifacts
   - [ ] Gate Mermaid CLI rendering (inline and sidecar) with automated checks for `.mmd` → PNG/SVG/PDF conversions
 - Workflow Integration
-  - [ ] Implement Rust sandbox orchestrator (Bollard or CLI wrapper) to prepare temp dirs, run scripts, stream logs, and clean up outputs
-  - [ ] Route Researcher/Analyst flows through sandbox execution and writing `sandbox.*`/`math.*` context keys
+  - [x] Implement Rust sandbox orchestrator (Bollard or CLI wrapper) to prepare temp dirs, run scripts, stream logs, and clean up outputs
+  - [x] Route Researcher/Analyst flows through sandbox execution and writing `math.*` context keys
   - [ ] Handle failure modes (timeouts, non-zero exit, missing outputs) with retries and graceful degradation paths
 - Reliability & Operations
   - [ ] Emit sandbox health/readiness metrics (latency, exit status, resource usage) via OTEL; alert on repeated failures

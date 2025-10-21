@@ -1,10 +1,15 @@
 use async_trait::async_trait;
 use graph_flow::{Context, NextAction, Task, TaskResult};
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 use tokio::time::{Duration, sleep};
 use tracing::{debug, info, instrument, warn};
 
 use crate::memory::{DynRetriever, RetrievedDocument};
+use crate::sandbox::{
+    SandboxExecutor, SandboxFile, SandboxOutputKind, SandboxOutputSpec, SandboxRequest,
+    SandboxResult,
+};
 use crate::trace::TraceCollector;
 
 #[derive(Debug, Clone)]
@@ -22,6 +27,149 @@ impl Default for FactCheckSettings {
             timeout_ms: 120,
         }
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct MathToolRequest {
+    #[serde(default)]
+    pub script_name: Option<String>,
+    #[serde(default)]
+    pub script: String,
+    #[serde(default)]
+    pub args: Vec<String>,
+    #[serde(default)]
+    pub files: Vec<SandboxFile>,
+    #[serde(default)]
+    pub expected_outputs: Vec<SandboxOutputSpec>,
+    #[serde(default)]
+    pub timeout_ms: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MathToolOutput {
+    pub path: String,
+    pub kind: SandboxOutputKind,
+    #[serde(default)]
+    pub bytes: Vec<u8>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum MathToolStatus {
+    #[default]
+    Skipped,
+    Success,
+    Timeout,
+    Failure,
+}
+
+impl std::fmt::Display for MathToolStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let text = match self {
+            MathToolStatus::Skipped => "skipped",
+            MathToolStatus::Success => "success",
+            MathToolStatus::Timeout => "timeout",
+            MathToolStatus::Failure => "failure",
+        };
+        write!(f, "{}", text)
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MathToolResult {
+    pub status: MathToolStatus,
+    pub exit_code: Option<i32>,
+    pub timed_out: bool,
+    pub duration_ms: u64,
+    pub stdout: String,
+    pub stderr: String,
+    pub outputs: Vec<MathToolOutput>,
+}
+
+impl Default for MathToolResult {
+    fn default() -> Self {
+        Self {
+            status: MathToolStatus::Skipped,
+            exit_code: None,
+            timed_out: false,
+            duration_ms: 0,
+            stdout: String::new(),
+            stderr: String::new(),
+            outputs: Vec::new(),
+        }
+    }
+}
+
+impl MathToolResult {
+    fn from_sandbox(result: SandboxResult) -> Self {
+        let duration_ms = result.duration.as_millis().min(u128::from(u64::MAX)) as u64;
+        let outputs = result
+            .outputs
+            .into_iter()
+            .map(|output| MathToolOutput {
+                path: output.spec.path,
+                kind: output.spec.kind,
+                bytes: output.bytes,
+            })
+            .collect::<Vec<_>>();
+
+        let status = if result.timed_out {
+            MathToolStatus::Timeout
+        } else if result.exit_code.unwrap_or(-1) == 0 {
+            MathToolStatus::Success
+        } else {
+            MathToolStatus::Failure
+        };
+
+        Self {
+            status,
+            exit_code: result.exit_code,
+            timed_out: result.timed_out,
+            duration_ms,
+            stdout: result.stdout,
+            stderr: result.stderr,
+            outputs,
+        }
+    }
+}
+
+async fn persist_math_result(
+    context: &Context,
+    result: &MathToolResult,
+    script_name: Option<&str>,
+) {
+    context.set("math.result", result).await;
+    context.set("math.status", result.status.to_string()).await;
+    context.set("math.stdout", &result.stdout).await;
+    context.set("math.stderr", &result.stderr).await;
+    context.set("math.exit_code", result.exit_code).await;
+    context.set("math.timed_out", result.timed_out).await;
+    context.set("math.duration_ms", result.duration_ms).await;
+    context.set("math.outputs", &result.outputs).await;
+    if let Some(name) = script_name {
+        context.set("math.script_name", name.to_string()).await;
+    }
+    let retry_recommended = matches!(
+        result.status,
+        MathToolStatus::Failure | MathToolStatus::Timeout
+    );
+    context
+        .set("math.retry_recommended", retry_recommended)
+        .await;
+    let degradation_note = if retry_recommended {
+        Some(format!(
+            "Math tool {}. Falling back to non-numeric reasoning.",
+            result.status
+        ))
+    } else {
+        None
+    };
+    context
+        .set(
+            "math.degradation_note",
+            degradation_note.unwrap_or_default(),
+        )
+        .await;
 }
 
 async fn record_trace(context: &Context, task_id: &str, message: impl Into<String>) {
@@ -223,6 +371,94 @@ impl Task for FactCheckTask {
 
 #[derive(Default)]
 pub struct AnalystTask;
+
+pub struct MathToolTask {
+    runner: Arc<dyn SandboxExecutor>,
+}
+
+impl MathToolTask {
+    pub fn new(runner: Arc<dyn SandboxExecutor>) -> Self {
+        Self { runner }
+    }
+}
+
+#[async_trait]
+impl Task for MathToolTask {
+    fn id(&self) -> &str {
+        "math_tool"
+    }
+
+    #[instrument(name = "task.math_tool", skip(self, context))]
+    async fn run(&self, context: Context) -> graph_flow::Result<TaskResult> {
+        let mut result = MathToolResult::default();
+        let request = context.get::<MathToolRequest>("math.request").await;
+
+        let Some(request) = request else {
+            persist_math_result(&context, &result, None).await;
+            record_trace(&context, self.id(), "skipped (no request)").await;
+            return Ok(TaskResult::new(
+                Some("Math tool skipped (no request)".to_string()),
+                NextAction::ContinueAndExecute,
+            ));
+        };
+
+        if request.script.trim().is_empty() {
+            persist_math_result(&context, &result, request.script_name.as_deref()).await;
+            record_trace(&context, self.id(), "skipped (empty script)").await;
+            return Ok(TaskResult::new(
+                Some("Math tool skipped (empty script)".to_string()),
+                NextAction::ContinueAndExecute,
+            ));
+        }
+
+        let script_name = request
+            .script_name
+            .clone()
+            .unwrap_or_else(|| "math_tool.py".to_string());
+
+        let mut sandbox_request = SandboxRequest::new(script_name.clone(), request.script.clone());
+        sandbox_request.args = request.args.clone();
+        sandbox_request.files = request.files.clone();
+        sandbox_request.expected_outputs = request.expected_outputs.clone();
+        if let Some(timeout_ms) = request.timeout_ms {
+            sandbox_request.timeout = Duration::from_millis(timeout_ms);
+        }
+
+        result = match self.runner.execute(sandbox_request).await {
+            Ok(sandbox_result) => MathToolResult::from_sandbox(sandbox_result),
+            Err(err) => {
+                warn!(error = %err, "math sandbox execution failed");
+                MathToolResult {
+                    status: MathToolStatus::Failure,
+                    stderr: err.to_string(),
+                    ..MathToolResult::default()
+                }
+            }
+        };
+
+        persist_math_result(&context, &result, Some(&script_name)).await;
+
+        let trace_message = format!(
+            "{} (outputs {}, exit {:?})",
+            result.status,
+            result.outputs.len(),
+            result.exit_code
+        );
+        record_trace(&context, self.id(), trace_message).await;
+
+        let message = match result.status {
+            MathToolStatus::Success => "Math tool completed successfully",
+            MathToolStatus::Timeout => "Math tool timed out",
+            MathToolStatus::Failure => "Math tool failed",
+            MathToolStatus::Skipped => "Math tool skipped",
+        };
+
+        Ok(TaskResult::new(
+            Some(message.to_string()),
+            NextAction::ContinueAndExecute,
+        ))
+    }
+}
 
 #[async_trait]
 impl Task for AnalystTask {

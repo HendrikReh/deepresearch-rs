@@ -1,0 +1,149 @@
+# **Implementation Plan for Secure Docker-Based Code Execution**
+
+
+
+## **Overview**
+
+To safely run dynamically generated code (Python scripts producing calculations, data tables, and diagrams) in a **local sandbox**, we will use a **Docker-based container environment**. Docker provides strong isolation from the host system and is easily reproducible on Linux (aligning with eventual deployment). The sandbox container will include Python and all required tools (e.g. Matplotlib, Graphviz, Mermaid CLI) to execute code **headlessly** (no GUI) and output results in image formats (PNG, SVG, PDF). This approach ensures untrusted code cannot harm the host (no filesystem or network access outside the container) while still allowing the AI agent to generate and retrieve the desired outputs.
+
+
+
+## **Building the Secure Docker Sandbox Environment**
+
+**1. Base Image and OS:** Start with a minimal Python base image such as python:3.11-slim-bullseye. This Debian-based image is lightweight and provides Python 3.11 on a recent OS. Using a slim base reduces the attack surface and download size.
+
+**2. System Dependencies:** Install system packages needed for graphics and headless operation:
+
+- **Graphviz:** Install via apt (apt-get install -y graphviz) for generating graphs (e.g. NetworkX or DOT diagrams). This provides the dot command and libraries to output graph images or PDFs.
+- **Node.js & NPM:** Install Node.js (e.g. via apt or NodeSource) because we need it for Mermaid CLI (which is a Node tool). Ensure npm is available to install Mermaid.
+- **Headless Chromium Libraries:** Since Mermaid CLI uses Puppeteer (headless Chromium) under the hood, install Chrome’s common dependencies. For Debian-based images, this includes packages like fonts-liberation, libglib2.0-0, libgtk-3-0, libnss3, and others required by Chromium . Including these prevents errors when Mermaid CLI tries to launch a headless browser.
+
+**3. Python Libraries:** Use pip to install Python packages required by the agent’s code generation:
+
+- **Matplotlib:** For plotting graphs and charts. Matplotlib will run in non-interactive mode (no display) using the Agg backend to render to files. In headless mode (no DISPLAY), Matplotlib automatically falls back to the **Agg** backend, which is non-GUI and writes to image files . This allows saving plots as PNG, PDF, or SVG using plt.savefig() without any GUI.
+- **NetworkX:** For graph data structures and drawing. NetworkX can interface with Matplotlib or Graphviz to visualize networks.
+- **Pandas/Polars:** For data manipulation if needed (the agent might generate data tables or use these for calculations).
+- **Additional tools:** If needed, install libraries like pygraphviz or pydot (to help NetworkX draw graphs via Graphviz) and any other packages relevant to the agent’s output. Ensure all these are installed inside the container via pip.
+
+**4. Mermaid CLI:** Install Mermaid CLI globally using npm (e.g. npm install -g @mermaid-js/mermaid-cli). Mermaid CLI (mmdc) allows conversion of Mermaid diagram definitions to images. It can take a .mmd definition file and output **SVG/PNG/PDF** diagrams . By installing it in the container, the Python code (or a post-processing step) can generate diagrams from Mermaid syntax when needed. (Alternatively, we could use a separate Mermaid CLI container as discussed later, but integrating it here provides a one-container solution.) Be sure the installation of Mermaid CLI happens *after* installing Chrome dependencies so that Puppeteer can launch Chrome successfully.
+
+**5. Non-Root User:** For additional safety, configure the Docker image to run as a non-root user. For example, create a user sandbox in the Dockerfile (RUN useradd -m sandbox) and use USER sandbox for running code. This way, even if the code tries to escalate privileges or modify system files, it’s limited by an unprivileged user inside the container. This defense-in-depth protects the container’s filesystem (on top of other restrictions we’ll apply).
+
+**6. Dockerfile Summary:** The Dockerfile will roughly perform these steps: start from Python base, apt-get update && apt-get install (graphviz, nodejs, chromium deps, etc.), pip install required Python packages, npm install -g mermaid-cli, add a sandbox user, and set that as the active user. This custom image encapsulates all tools needed for our AI agent’s code execution in a single portable environment. Once the Dockerfile is written, build the image (e.g. docker build -t ai_sandbox:latest .).
+
+
+
+## **Hardening the Container Sandbox**
+
+Simply having the tools installed isn’t enough – we must run the container with restricted privileges for security:
+
+- **Drop Linux Capabilities:** By default, containers might run with some elevated Linux capabilities. We will **drop all capabilities** and only add back minimal ones that are necessary. In practice, we can run the container with --cap-drop=ALL and then --cap-add for a few needed capabilities (such as CHOWN, SETUID, SETGID, FOWNER) to allow typical file operations inside . No capability to load kernel modules or network interfaces will be granted.
+- **No Privilege Escalation:** Use --security-opt no-new-privileges so that the process inside the container cannot gain any additional privileges (even if it tried via SUID binaries or other means) . This flag ensures the process runs with the privileges it started with and cannot elevate them.
+- **Read-Only Filesystem:** Mount the container’s root filesystem as read-only (--read-only) to prevent the code from altering system files or persistent installation. We will provide writable areas via temporary file systems or mounts (described next) for any runtime needs. With a read-only root and no new privileges, even a malicious script cannot permanently change the container or host .
+- **Ephemeral Writable Space:** Use --tmpfs mounts for common write paths like /tmp, /var/tmp, and /run. This gives the container writable space in memory for temporary files, which is wiped when the container stops  . For example, --tmpfs /tmp:exec,size=1G can provide a tmpfs with execution permission for any temp scripts or data. This way, the container can operate normally (many programs expect to write to /tmp) despite the overall filesystem being read-only.
+- **Resource Limits:** Impose CPU and memory limits to contain resource abuse. For instance, run the container with --memory=2g --cpus=2 (2 GB RAM, 2 CPU cores) or adjust as needed . This prevents a malicious or buggy script from consuming all host resources (e.g. infinite loop or memory leak will be constrained to these limits). We can adjust these values based on expected workload, but setting reasonable limits protects the host from heavy load.
+- **Disable Networking:** Launch the sandbox container with networking turned off (--network none). This ensures the executed code cannot make outbound network calls (e.g. to exfiltrate data or download malicious payloads). It effectively sandboxes the process from internet access unless explicitly allowed. The AI-generated scripts typically don’t need network access for local computations and diagram generation, so this is a safe default.
+- **Volume Mount for I/O:** Mount a host directory into the container for input and output exchange. For example, we can create a host directory (or use a temporary one per execution) and mount it to /workspace in the container: -v /host/path/agent_io:/workspace. The agent will place the input script (and any input data files) here and designate this as the output location for results. This volume will be the only persistent storage the container can access. Everything else in the container is either read-only or tmpfs (ephemeral) . When the container runs, the script can write output files to /workspace, and after execution the host can read them from /host/path/agent_io. This approach cleanly isolates persistence to a single known folder and nothing from the container persists elsewhere.
+
+By combining these measures, we achieve a “locked-down” Docker sandbox. In summary, the container: **(a)** has no persistent storage or ability to alter system files, **(b)** cannot escalate privileges, **(c)** has constrained CPU and memory, and **(d)** has no network access . Even if the executed script is hostile, these settings keep the host safe. (These settings are inspired by Dominik Köhler’s *“Bulletproof Docker Sandbox”* setup  , adapted to our use case.)
+
+
+
+## **Headless Execution of Scripts (Graphics and Plotting)**
+
+With the environment and security in place, we ensure the container can execute **headless** (without GUI) and still produce graphical output:
+
+- **Matplotlib Configuration:** Matplotlib will default to a non-interactive backend (Agg) in the absence of a display. We will double-check this by not setting a DISPLAY variable (or explicitly setting MPLBACKEND=Agg in the container). The Agg backend can render plots to file formats like PNG directly  . Moreover, Matplotlib has built-in backends for PDF and SVG output as well – for example, using the PDF backend to save as PDF, or SVG backend for SVG files  . Our Docker image includes the necessary libraries (e.g. cairo or others if needed) to ensure Matplotlib’s PDF and SVG backends work out-of-the-box. The Python script can simply call plt.savefig("output.png") or "output.pdf" etc., and Matplotlib will create the file.
+- **Graphviz and NetworkX:** With Graphviz installed, any script that uses Graphviz (or libraries like NetworkX that call Graphviz under the hood) can generate diagrams without a GUI. For example, a NetworkX graph can use nx.draw() with Matplotlib or output to Graphviz DOT format and call Graphviz to produce an image. Graphviz’s dot command can directly output to formats including PNG, PDF, and SVG by specifying the -T flag or file extension. Thus, if the AI agent generates a DOT graph description, it can be rendered in the container (either via Python graphviz library or by invoking the dot utility).
+- **Mermaid Diagrams:** Mermaid is a text-based diagram DSL. If the AI agent decides to produce a Mermaid diagram, the workflow is a bit different from Matplotlib/Graphviz: the Python script would output a .mmd file (Mermaid definition). We handle rendering this definition to an image in one of two ways:
+  - *Within the same container:* Since we installed Mermaid CLI (mmdc), the Python script can call Mermaid CLI as a subprocess to generate the image. For instance, the script could use os.system("mmdc -i diagram.mmd -o diagram.svg") (or PNG/PDF). This will invoke Puppeteer/Chromium inside the container to produce the diagram file. The container has all needed pieces (Node, Chromium libs, Mermaid CLI) to do this headlessly. The output (SVG/PNG/PDF) will be saved to the /workspace volume.
+  - *Via a separate container:* Alternatively, we can handle Mermaid rendering outside the Python script for better separation. In this approach, the Python code simply saves the diagram.mmd definition to the output directory and exits. Then our Rust orchestrator (see next section) will spin up a **Mermaid CLI container** to convert that file. For example, use the official Mermaid CLI image from GitHub Container Registry (ghcr.io/mermaid-js/mermaid-cli/mermaid-cli) or Docker Hub (minlag/mermaid-cli). We can run something like:
+
+```
+docker run --rm -u $(id -u):$(id -g) -v /host/path/agent_io:/data ghcr.io/mermaid-js/mermaid-cli/mermaid-cli -i diagram.mmd -o diagram.png
+```
+
+- This command mounts our I/O folder to /data (the working directory in that image) and runs mmdc to produce, say, a PNG . The Mermaid CLI will find diagram.mmd in /data, launch headless Chrome, and output diagram.png (or .svg/.pdf as specified). This container runs only for a second and is removed (--rm) after generating the file. Using a separate container keeps our main sandbox image smaller and focused (we could skip installing Node/Chromium in the main image if we always do this).
+
+  Both methods are acceptable; the choice can depend on performance and complexity trade-offs. **Note:** It’s acceptable if Mermaid diagrams are produced as a **separate image file** from other outputs (we will just include that file in the results). The plan will treat Mermaid output generation as an independent step, triggered only if a .mmd file is present.
+
+- **Verification:** To ensure everything works, we would do a test run inside the container. For example, run a simple script that plots a graph with Matplotlib, saves a PNG, and exits. Then run a script that uses Mermaid CLI to render a small diagram. This manual testing within the container (or via Rust calls) will confirm that headless rendering is functional (no missing library errors, etc.). The Matplotlib docs and community guidance confirm that without an X display, the Agg backend is used automatically , so we expect plot saving to “just work.” Likewise, Mermaid CLI’s documentation confirms it can output to PNG, SVG, or PDF files as needed , so we’ll test each format generation.
+
+
+
+## **Input and Output Handling in the Workflow**
+
+This section outlines how the AI agent will provide code to the container and retrieve results, covering both **script input forms** and **desired output formats**:
+
+- **Accepting Script as a String or File:** The Rust-based AI agent may either generate a script in-memory or point to an existing file. Our implementation will handle both:
+  - *Script as a String:* The agent will create a temporary file (in the host I/O directory) to hold the script content. For example, write the string to /host/path/agent_io/script.py. This file will be mounted into the container, so the container can run it.
+  - *Script as a File:* If the agent already has a file path (on the host), we will copy or move that file into the designated I/O directory (to avoid mounting arbitrary host paths). This ensures all execution happens on files within the sandbox mount. The file name can be preserved or normalized (e.g., always use script.py to simplify container command).
+- **Determining Output Format:** The agent should specify or infer what output is expected (PNG, SVG, PDF, or a combination). There are two scenarios:
+  - *Single primary output:* If the user or agent expects one main result (e.g. a chart image), it can decide the format beforehand. The agent can incorporate that into the script (e.g., calling savefig("output.pdf") for a PDF result). Our sandbox environment supports all these formats. Matplotlib can save to **PNG (raster)** or **PDF/SVG (vector)** using its backends  . Graphviz’s dot can output SVG or PDF by file extension. Mermaid CLI can output to any of the three formats by specifying the output filename. So the script or the post-process step will produce the format needed.
+  - *Multiple outputs:* In some cases, the agent might produce more than one file (for example, a PNG plot and a CSV data file, or separate diagrams). Our design allows multiple files in the output directory. The agent will gather all relevant outputs to return or use. For Mermaid, if the script outputs an .mmd and we choose to generate an image from it, that results in an additional file (the diagram image). We consider that part of the outputs. It’s acceptable to have separate image files for different diagrams; the agent just needs to keep track of them (e.g., by predictable naming).
+- **Output Retrieval:** After the container finishes execution, the host (Rust agent) will read the results from the mounted volume. Since the container was run with a volume, the files written to /workspace (inside container) are already on the host directory. No extra docker cp step is needed – the files persist outside the container thanks to the bind mount. For example, if the script saved output.png to /workspace/output.png, the file will be accessible at /host/path/agent_io/output.png immediately after container exit. The agent will then:
+  1. Check for any error indications. If the container exited with an error (non-zero status or an exception trace in stdout), the agent can capture the logs for debugging.
+  2. Identify the output files. If a specific output name was expected, look for that. If multiple outputs are possible, enumerate the directory contents. By design, the agent might enforce certain filenames (like always writing the main image as output.png) to simplify this step.
+  3. If a Mermaid definition file was detected (e.g. diagram.mmd), invoke the Mermaid conversion (unless the Python script already did it). This will create diagram.svg/png/pdf alongside the .mmd.
+  4. Read or upload these output files as needed for the next step of the AI agent. For instance, the agent could send the image bytes back to a user interface or save them to a results location.
+- **Cleanup:** After retrieving outputs, the agent will delete the temporary host directory or its contents to avoid buildup of files between runs (especially if user runs many queries). Since the container was run with --rm or we explicitly remove it via the Docker API, there are no leftover container resources. Only the image remains cached locally for reuse. The ephemeral I/O directory can be wiped or reused for the next invocation (clearing old files each time to avoid confusion).
+
+
+
+## **Integrating with the Rust-Based AI Agent**
+
+The Rust application will orchestrate this whole process. Below are the integration steps and considerations for connecting the Docker sandbox with the AI agent logic:
+
+1. **Docker Control from Rust:** We have two main options: use a Docker API library for Rust (such as **Bollard** crate) or invoke Docker through command-line calls. Using Bollard (an async Docker API client) is robust and allows streaming logs, managing containers programmatically (https://blog.devgenius.io/3-popular-crates-for-working-with-containers-in-rust-c34b846f30ec). For example, the Rust code can use Bollard to create the container with the specified image and options, then stream the stdout/stderr to capture any output or errors in real time. This avoids the need to spawn external docker run processes and parse their output. Alternatively, for simplicity, the agent could use std::process::Command to call docker run ... with the appropriate flags and wait for it to finish. Either approach is viable; Bollard is more native to Rust and easier to handle complex interactions (we will proceed assuming Bollard or a similar library is used).
+
+2. **Preparation:** When the AI agent has generated a code string to execute (or identified a script file), the Rust code will:
+
+   - Create a temporary directory for this execution (e.g., under /tmp/ai_agent_run_12345/). This directory will serve as the mount point. It could contain the script.py, and it will be initially empty otherwise.
+   - Write the script into this directory as script.py (if it’s from a string) or copy the file here. Also, if the script requires any input data files (less likely in this context, but possible), place them in this directory as well so the container can access them.
+   - (Optional) The Rust agent might also create an empty output/ subdirectory if we want to separate outputs, but since we can use the root of the mount for both input and output, this isn’t strictly necessary. Just be clear in documentation how the script should output files (we can instruct the AI to output to the current working directory, which will be /workspace in container).
+
+3. **Launching the Container:** Using the Docker library or CLI, spawn a container with the following configuration:
+
+   - **Image:** our pre-built ai_sandbox:latest image (or whatever tag we used). Ensure this image is available locally (build beforehand or pull from registry if stored remotely).
+   - **Command:** to run the user script. For example, ["python", "/workspace/script.py"] as the container entrypoint command. This tells the container’s Python interpreter to execute the mounted script. (Our Docker image’s default working directory can be /workspace for convenience, or we simply refer to the absolute path.)
+   - **Mounts:** Bind mount the temp directory to /workspace inside the container, read-write. In Bollard, this is specified in the container HostConfig.binds. We also include tmpfs mounts for /tmp and others as described earlier (Bollard allows specifying tmpfs mapping in HostConfig.tmpfs).
+   - **Security Options:** Add the flags discussed: no-new-privileges, cap-drop all, cap-add minimal ones, disable network (in Docker API, NetworkDisabled: true or using the none network). Also, we might set ReadonlyRootfs: true via the API to enforce a read-only filesystem. Bollard (and Docker Engine API) supports all these options similarly to the CLI.
+   - **User:** Set the container to run as the non-root user we created (e.g., sandbox). In Docker API, that might be User: "sandbox" or a UID if needed. Alternatively, we could run as root but given we dropped privileges and added specific caps like SETUID, we want to ensure the process can actually run as a normal user. Running as the created sandbox user is cleaner.
+   - **Resource Limits:** Set the memory and CPU limits in the HostConfig (Memory: 2147483648 for 2GB, NanoCpus: 2e9 for 2 CPUs, or corresponding fields). These match the --memory and --cpus flags.
+
+   Once configured, instruct Docker to create and start the container. If using Bollard, Docker::create_container and then Docker::start_container would be used (or there is a convenience to auto-start on create).
+
+4. **Monitoring Execution:** After starting the container, the Rust agent should monitor its progress:
+
+   - If using Bollard (https://docs.rs/bollard/latest/bollard/struct.Docker.html), attach to the container’s logs stream (Docker::logs with stdout/stderr) so we can capture output or error messages in real time  . This is useful for debugging if the script fails. We can also set a timeout – if the script is expected to finish within, say, 30 seconds or a minute, the agent can enforce a timeout to avoid hanging indefinitely (and kill the container if exceeded).
+   - If using docker run via Command, we can either run it synchronously (which blocks until completion) or asynchronously and poll. But capturing output is easier with the Docker API.
+
+   The container will run the script to completion or until it is forcibly stopped (on timeout). On normal completion, Docker will exit the container process and we can then proceed. On timeout or error, we can stop the container via API and handle accordingly (e.g., include an error message to the user).
+
+5. **Post-Execution Steps:** Once the container stops:
+
+   - **Exit Code & Logs:** Check the container’s exit code. If non-zero, likely the script raised an exception. The agent should capture the stderr output from the logs and surface it (possibly sanitizing if needed) to the user or at least log it for developers. If zero, proceed assuming success.
+   - **Mermaid Conversion:** List the files in the host temp directory. If a .mmd file is present and there is no corresponding image file (the script did not itself produce the image), initiate the Mermaid CLI step. Using Bollard/CLI, run the Mermaid CLI container as described earlier. For instance, using Bollard: create a container from mermaid-cli image, mount the same host directory to /data, and set command to ["mmdc", "-i", "diagram.mmd", "-o", "diagram.svg"] (or whichever format is needed). Start it, wait for it to finish (should be quick). Ensure this container also has NetworkDisabled=true (though it’s just running Chrome headless, it shouldn’t need network). When done, check that diagram.svg (or specified output) is now in the folder.
+   - **Collect Outputs:** At this point, the directory might contain files like output.png (from Matplotlib or others), diagram.svg (from Mermaid conversion), and possibly text outputs (if the script chose to write any, e.g., a .txt or .csv). The agent will open and read these files. For images (PNG, SVG, PDF), the agent might base64-encode them or send them as binary depending on how results are returned to the end-user. For example, if this agent is powering a chatbot, it could respond with an image attachment or a path. The important part here is that the agent knows the filenames. We will document or enforce that the main outputs use a standard naming (the AI can be instructed to use certain names). For instance, always have the primary chart as output.png unless a different format is needed (then maybe output.pdf, etc.). Mermaid diagrams could follow the name of the mmd (e.g., diagram.svg for diagram.mmd).
+   - **Clean Up:** Use the Docker API to remove containers (if any are still around). If we ran with --rm, the main container might already be removed after exit, but if not, call remove. The Mermaid container we ran with --rm in CLI or we remove via API as well. Finally, delete the temp directory and its files from the host to avoid accumulation.
+
+6. **Rust Code Structure:** Implementing this can be done in a function that the AI agent calls whenever it needs to execute code. For example, a function run_code_in_sandbox(code: &str, output_format: OutputFormat) -> Result<Outputs> where Outputs could include paths or buffers of generated files. The function will perform steps 2–5 above. Key libraries: **Bollard** for Docker or shell out to Docker CLI, and standard Rust file I/O for managing the temp directory and files. Handle errors at each step (container creation failures, execution errors, missing output files) gracefully, possibly translating them into user-friendly messages.
+
+7. **Testing Integration:** Finally, test the end-to-end integration with a simple Rust unit test or manual test:
+
+   - Provide a small Python code string (e.g., print("Hello from sandbox")) and see if the function returns successfully with no outputs except maybe a log.
+   - Provide a code string that plots a simple graph with Matplotlib and saves output.png. Verify the PNG is retrieved and viewable.
+   - Provide a Mermaid example: code string that writes a Mermaid definition to diagram.mmd. After execution and Mermaid conversion, verify the SVG/PDF/PNG is produced.
+   - These tests ensure that the Docker invocation, file mounting, and output capturing all work as expected in the Rust workflow. We can iterate on any issues (for example, if file permissions need adjusting – note we ran the container with -u $(id -u) in the Mermaid example to match host user, which avoids file permission issues on the output files . In Bollard, we can similarly set the user or adjust file ownership after the fact).
+
+By following these integration steps, the Rust-based AI agent will seamlessly utilize the Docker sandbox. The agent remains in control, preparing inputs and collecting outputs, while Docker ensures the execution is isolated and secure. This design is **similar to patterns used by other AI tools** – for instance, some OpenAI tools used isolated subprocess sandboxes on macOS, and many frameworks use Docker for isolation due to its security and convenience. With our Docker approach, we get a **reproducible, secure, headless execution environment** that can be deployed on any system running Docker, fulfilling both development needs on macOS and production needs on Linux.
+
+
+
+## **Summary and Future Considerations**
+
+In summary, the implementation involves building a Docker image with the required stack (Python, plotting libraries, Node/Mermaid, etc.), running it with strict security options for each code execution, and integrating that process in the Rust agent’s workflow to supply code and retrieve results. This solution will produce outputs in **PNG, SVG, or PDF** as needed by leveraging Matplotlib’s non-interactive backends and Mermaid/Graphviz CLI tools (which all support these formats). The **Docker sandbox** approach provides peace of mind: even if the generated code is malicious, it runs in a constrained environment with no ability to harm the host or network. All results are captured through a controlled volume mount.
+
+Moving forward, you may refine this setup by adding caching (to avoid rebuilding the image frequently), handling edge cases (very large outputs or long-running code with timeouts), and possibly logging or versioning outputs. Nonetheless, this plan provides a comprehensive starting point to implement a **bulletproof local sandbox** for the AI agent. By following the steps above and referencing Docker security best practices  and tool documentation (Matplotlib , Mermaid CLI , Puppeteer ), you can confidently execute untrusted code to generate rich outputs while keeping your system safe. All these choices make the solution robust, flexible, and aligned with both development convenience and production security.
+
+**References:** Key resources that informed this plan include Dominik Köhler’s guide (https://medium.com/@dkoehler-dev/my-bulletproof-docker-sandbox-for-running-untrusted-code-7b2180502d27) on a hardened Docker sandbox (with flags like no-new-privileges, tmpfs mounts, etc.  ), Matplotlib’s documentation (https://matplotlib.org/stable/users/explain/figure/backends.html) on using non-GUI backends for file output  , and Mermaid CLI’s usage notes (https://github.com/mermaid-js/mermaid-cli) confirming it can convert Mermaid definitions to PNG/SVG/PDF images . Additionally, the Puppeteer troubleshooting guide (https://pptr.dev/troubleshooting#:~:text=libexpat1%20libfontconfig1%20libgbm1%20libgcc1%20libglib2.0,0) was consulted to list necessary packages for headless Chrome in Linux containers . These references provide further details for setting up the environment and can be referred to during implementation for any clarifications.

@@ -6,6 +6,7 @@
 mod eval;
 mod logging;
 mod memory;
+mod sandbox;
 mod tasks;
 mod trace;
 mod workflow;
@@ -13,9 +14,14 @@ mod workflow;
 pub use eval::{EvaluationHarness, EvaluationMetrics};
 pub use logging::remove_session_logs;
 pub use memory::{IngestDocument, RetrievedDocument};
+pub use sandbox::{
+    DockerRuntimeUser, DockerSandboxConfig, DockerSandboxRunner, SandboxExecutor, SandboxOutput,
+    SandboxOutputKind, SandboxOutputSpec, SandboxRequest, SandboxResult,
+};
 pub use tasks::{
     AnalystOutput, AnalystTask, CriticTask, FactCheckSettings, FactCheckTask, FinalizeTask,
-    ManualReviewTask, ResearchTask,
+    ManualReviewTask, MathToolOutput, MathToolRequest, MathToolResult, MathToolStatus,
+    MathToolTask, ResearchTask,
 };
 pub use trace::{TraceCollector, TraceEvent, TraceStep, TraceSummary, persist_trace};
 pub use workflow::{

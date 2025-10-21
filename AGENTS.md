@@ -8,7 +8,7 @@ This repo hosts a fresh graph-first implementation of DeepResearch. All agent be
 ---
 
 ## System Snapshot
-- **Workflow:** Researcher → Analyst → Critic tasks executed through `graph_flow`.
+- **Workflow:** Researcher → Math Tool → Analyst → Critic tasks executed through `graph_flow`.
 - **Crates:**  
   - `deepresearch-core` — reusable tasks and workflow helpers.  
   - `deepresearch-cli` — demo binary that runs the default research session.
@@ -20,14 +20,15 @@ This repo hosts a fresh graph-first implementation of DeepResearch. All agent be
 
 | Path | Purpose | Notes |
 |------|---------|-------|
-| `crates/deepresearch-core/src/tasks.rs` | Implements `ResearchTask`, `AnalystTask`, `CriticTask` (`graph_flow::Task`) | Stores intermediate state in `Context` keys like `research.*`, `analysis.*`, `critique.*` |
+| `crates/deepresearch-core/src/tasks.rs` | Implements `ResearchTask`, `MathToolTask`, `AnalystTask`, `CriticTask` (`graph_flow::Task`) | Stores intermediate state in `Context` keys like `research.*`, `math.*`, `analysis.*`, `critique.*` |
+| `crates/deepresearch-core/src/sandbox/mod.rs` | Hardened Docker sandbox runner and request/response types | Executes Python math/stats scripts with read-only rootfs, tmpfs scratch, and output collection |
 | `crates/deepresearch-core/src/workflow.rs` | Builds the workflow graph and runs sessions via `FlowRunner` | Uses `InMemorySessionStorage` and loops until `ExecutionStatus::Completed` |
 | `crates/deepresearch-cli/src/main.rs` | Initializes tracing and runs a sample session for a hard-coded query | Prints the critic verdict + summary string returned from `run_research_session` |
 
 ---
 
 ## How the Graph Runs
-1. `build_graph()` registers the core tasks on a `GraphBuilder`: Researcher → Analyst → Critic → {Finalize, ManualReview}.  
+1. `build_graph()` registers the core tasks on a `GraphBuilder`: Researcher → Math Tool → Analyst → Critic → {Finalize, ManualReview}.  
 2. A new session is created with `Session::new_from_task(...)`; the query is stored in the session `Context`.  
 3. `FlowRunner::run` executes step-by-step; the critic decides whether to branch to `FinalizeTask` or `ManualReviewTask` via `add_conditional_edge`.  
 4. The final report is stored under `final.summary`; clients can extend the graph by providing a `GraphCustomizer` through `SessionOptions`.
@@ -44,6 +45,10 @@ Agents may extend their behaviour by reading/writing new context keys; the workf
 | `research.findings` | `ResearchTask` | `Vec<String>` | Bullet insights gathered during retrieval. |
 | `research.sources` | `ResearchTask` | `Vec<String>` | Source URIs backing the findings. |
 | `analysis.output` | `AnalystTask` | `AnalystOutput` (summary/highlight/sources) | Structured synthesis consumed by the critic. |
+| `math.request` | Upstream agent / `SessionOptions` | `MathToolRequest` | Python script + assets to execute inside the sandbox. |
+| `math.result` | `MathToolTask` | `MathToolResult` (status, stdout/stderr, outputs) | Captures execution status, metrics, and artefacts. |
+| `math.outputs` | `MathToolTask` | `Vec<MathToolOutput>` | Binary/text artefacts emitted by the script (PNG/SVG/PDF/etc.). |
+| `math.status` | `MathToolTask` | `String` (`success`, `failure`, `timeout`, `skipped`) | Convenience status used by downstream tasks for branching. |
 | `critique.confident` | `CriticTask` | `bool` | Indicates whether automated checks pass (set synchronously for conditional edge). |
 | `critique.verdict` | `CriticTask` | `String` | Human-readable verdict surfaced to the end user. |
 | `final.summary` | `FinalizeTask` / `ManualReviewTask` | `String` | Final message returned to the caller. |
@@ -103,6 +108,9 @@ cargo test --offline -p deepresearch-core finalize_summary_snapshot -- --nocaptu
 ```
 
 Add new tasks by implementing `graph_flow::Task` and registering them in `build_graph()`. Prefer `NextAction::ContinueAndExecute` for straight-line execution and `NextAction::End` or `WaitForInput` for pauses.
+- Use `SessionOptions::with_sandbox_executor(Arc<dyn SandboxExecutor>)` (or the matching `ResumeOptions` helper) to enable the hardened Python sandbox defined in `containers/python-sandbox/Dockerfile`.
+- `MathToolTask` writes results to `math.*` keys; downstream agents should inspect `math.status` / `math.result` to decide whether to trust numeric outputs or fall back.
+- Sandbox validation: `docker build -t deepresearch-python-sandbox:latest -f containers/python-sandbox/Dockerfile .` then `DEEPRESEARCH_SANDBOX_TESTS=1 cargo test -p deepresearch-core --test sandbox -- --ignored --nocapture`.
 
 ---
 

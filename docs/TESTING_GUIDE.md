@@ -25,6 +25,7 @@ This guide consolidates recommended verification steps for the DeepResearch stac
 | Offline build smoke test | `cargo check --offline` | Catches missing workspace deps |
 | Full test suite | `cargo test --workspace --all-targets -- --nocapture` | Runs unit + integration + logging tests |
 | GUI smoke tests | `cargo test -p deepresearch-gui --test http -- --nocapture` | Verifies health/auth guards, SSE stream payload (manual-review flag), metrics/timeline trace response, and API wiring |
+| Sandbox smoke (opt-in) | `DEEPRESEARCH_SANDBOX_TESTS=1 docker build -t deepresearch-python-sandbox:latest -f containers/python-sandbox/Dockerfile .`<br>`DEEPRESEARCH_SANDBOX_TESTS=1 cargo test -p deepresearch-core --test sandbox -- --ignored --nocapture` | Builds the hardened image and runs headless Matplotlib/Graphviz/Mermaid pipeline (requires Docker) |
 | Snapshot regression | `cargo test --offline -p deepresearch-core finalize_summary_snapshot` | Guards finalize/critic output formatting (use `INSTA_UPDATE=always cargo test --offline -p deepresearch-core finalize_summary_snapshot` to refresh deliberately) |
 | Offline harness | `cargo test --offline --workspace --all-targets -- --nocapture` | Mirrors CI test matrix locally |
 
@@ -93,6 +94,11 @@ This guide consolidates recommended verification steps for the DeepResearch stac
   3. Confirm `.tmp/logs/<year>/<month>/audit.jsonl` contains corresponding entries
   4. Run `cargo run --offline -p deepresearch-cli purge <SESSION>` and verify session entry, trace file, and audit record removed
 - Retention: set `DEEPRESEARCH_LOG_RETENTION_DAYS=0` and rerun logging test; directory should be pruned automatically.
+
+### M12 – Secure Docker Sandbox
+- Build sandbox image: `docker build -t deepresearch-python-sandbox:latest -f containers/python-sandbox/Dockerfile .`
+- Run sandbox smoke tests: `DEEPRESEARCH_SANDBOX_TESTS=1 cargo test -p deepresearch-core --test sandbox -- --ignored --nocapture`
+- Inspect generated artefacts (PNG, PDF, SVG) emitted by the test to ensure headless toolchain functionality.
 
 ---
 

@@ -2,9 +2,10 @@ use crate::logging::{SessionLogInput, log_session_completion};
 #[cfg(feature = "qdrant-retriever")]
 use crate::memory::qdrant::{HybridRetriever, QdrantConfig};
 use crate::memory::{DynRetriever, IngestDocument, StubRetriever};
+use crate::sandbox::SandboxExecutor;
 use crate::tasks::{
     AnalystOutput, AnalystTask, CriticTask, FactCheckSettings, FactCheckTask, FinalizeTask,
-    ManualReviewTask, ResearchTask,
+    ManualReviewTask, MathToolTask, ResearchTask,
 };
 use crate::trace::{TraceCollector, TraceEvent, TraceSummary, persist_trace};
 use anyhow::{Result, anyhow};
@@ -27,6 +28,7 @@ const DEFAULT_TRACE_DIR: &str = "data/traces";
 #[derive(Clone)]
 pub struct BaseGraphTasks {
     pub research: Arc<ResearchTask>,
+    pub math: Option<Arc<MathToolTask>>,
     pub analyst: Arc<AnalystTask>,
     pub fact_check: Arc<FactCheckTask>,
     pub critic: Arc<CriticTask>,
@@ -35,9 +37,14 @@ pub struct BaseGraphTasks {
 }
 
 impl BaseGraphTasks {
-    fn new(retriever: DynRetriever, fact_settings: FactCheckSettings) -> Self {
+    fn new(
+        retriever: DynRetriever,
+        fact_settings: FactCheckSettings,
+        math: Option<Arc<MathToolTask>>,
+    ) -> Self {
         Self {
             research: Arc::new(ResearchTask::new(retriever)),
+            math,
             analyst: Arc::new(AnalystTask),
             fact_check: Arc::new(FactCheckTask::new(fact_settings)),
             critic: Arc::new(CriticTask),
@@ -222,8 +229,10 @@ fn build_graph(
     customizer: Option<&GraphCustomizer>,
     retriever: DynRetriever,
     fact_settings: FactCheckSettings,
+    math_executor: Option<Arc<dyn SandboxExecutor>>,
 ) -> (Arc<graph_flow::Graph>, BaseGraphTasks) {
-    let tasks = BaseGraphTasks::new(retriever, fact_settings);
+    let math_task = math_executor.map(|executor| Arc::new(MathToolTask::new(executor)));
+    let tasks = BaseGraphTasks::new(retriever, fact_settings, math_task);
 
     let builder = GraphBuilder::new("deepresearch_workflow")
         .add_task(tasks.research.clone())
@@ -233,23 +242,38 @@ fn build_graph(
         .add_task(tasks.finalize.clone())
         .add_task(tasks.manual_review.clone());
 
+    let builder = if let Some(math) = &tasks.math {
+        builder.add_task(math.clone())
+    } else {
+        builder
+    };
+
     let builder = if let Some(customize) = customizer {
         customize(builder, &tasks)
     } else {
         builder
     };
 
-    let builder = builder
-        .add_edge(tasks.research.id(), tasks.analyst.id())
-        .add_edge(tasks.analyst.id(), tasks.fact_check.id())
-        .add_edge(tasks.fact_check.id(), tasks.critic.id())
-        .add_conditional_edge(
-            tasks.critic.id(),
-            |ctx| ctx.get_sync::<bool>("critique.confident").unwrap_or(false),
-            tasks.finalize.id(),
-            tasks.manual_review.id(),
-        )
-        .set_start_task(tasks.research.id());
+    let builder = {
+        let builder = if let Some(math) = &tasks.math {
+            builder
+                .add_edge(tasks.research.id(), math.id())
+                .add_edge(math.id(), tasks.analyst.id())
+        } else {
+            builder.add_edge(tasks.research.id(), tasks.analyst.id())
+        };
+
+        builder
+            .add_edge(tasks.analyst.id(), tasks.fact_check.id())
+            .add_edge(tasks.fact_check.id(), tasks.critic.id())
+            .add_conditional_edge(
+                tasks.critic.id(),
+                |ctx| ctx.get_sync::<bool>("critique.confident").unwrap_or(false),
+                tasks.finalize.id(),
+                tasks.manual_review.id(),
+            )
+            .set_start_task(tasks.research.id())
+    };
 
     let graph = Arc::new(builder.build());
 
@@ -312,6 +336,7 @@ pub struct SessionOptions<'a> {
     pub storage: StorageChoice,
     pub retriever: RetrieverChoice,
     pub fact_check_settings: FactCheckSettings,
+    pub sandbox_executor: Option<Arc<dyn SandboxExecutor>>,
     pub trace_enabled: bool,
     pub trace_output_dir: Option<PathBuf>,
 }
@@ -326,6 +351,7 @@ impl<'a> SessionOptions<'a> {
             storage: StorageChoice::InMemory,
             retriever: RetrieverChoice::default(),
             fact_check_settings: FactCheckSettings::default(),
+            sandbox_executor: None,
             trace_enabled: false,
             trace_output_dir: None,
         }
@@ -372,6 +398,11 @@ impl<'a> SessionOptions<'a> {
         self
     }
 
+    pub fn with_sandbox_executor(mut self, executor: Arc<dyn SandboxExecutor>) -> Self {
+        self.sandbox_executor = Some(executor);
+        self
+    }
+
     pub fn with_qdrant_retriever(
         mut self,
         url: impl Into<String>,
@@ -410,6 +441,7 @@ pub async fn run_research_session_with_report(
         options.customize_graph.as_deref(),
         retriever,
         options.fact_check_settings.clone(),
+        options.sandbox_executor.clone(),
     );
     let storage = init_storage(&options.storage).await?;
     let runner = FlowRunner::new(graph, storage.clone());
@@ -489,6 +521,7 @@ pub struct ResumeOptions {
     pub storage: StorageChoice,
     pub retriever: RetrieverChoice,
     pub fact_check_settings: FactCheckSettings,
+    pub sandbox_executor: Option<Arc<dyn SandboxExecutor>>,
     pub trace_enabled: bool,
     pub trace_output_dir: Option<PathBuf>,
 }
@@ -501,6 +534,7 @@ impl ResumeOptions {
             storage: StorageChoice::InMemory,
             retriever: RetrieverChoice::default(),
             fact_check_settings: FactCheckSettings::default(),
+            sandbox_executor: None,
             trace_enabled: false,
             trace_output_dir: None,
         }
@@ -534,6 +568,11 @@ impl ResumeOptions {
 
     pub fn with_fact_check_settings(mut self, settings: FactCheckSettings) -> Self {
         self.fact_check_settings = settings;
+        self
+    }
+
+    pub fn with_sandbox_executor(mut self, executor: Arc<dyn SandboxExecutor>) -> Self {
+        self.sandbox_executor = Some(executor);
         self
     }
 
@@ -633,6 +672,7 @@ pub async fn resume_research_session_with_report(options: ResumeOptions) -> Resu
         options.customize_graph.as_deref(),
         retriever,
         options.fact_check_settings.clone(),
+        options.sandbox_executor.clone(),
     );
     let storage = init_storage(&options.storage).await?;
     let runner = FlowRunner::new(graph, storage.clone());

@@ -10,6 +10,7 @@ The automated GitHub Actions workflow (`.github/workflows/ci.yml`) enforces the 
 6. **Bench latency check** — `cargo run --offline -p deepresearch-cli bench "CI bench" --sessions 8 --concurrency 4 --format json`
    - Fails if average latency > 350 ms, p95 latency > 400 ms, or any benchmark run fails
 7. **API smoke** — launches `deepresearch-api`, hits `/health` and `/query`, then shuts down
+8. **Sandbox smoke (Docker)** — builds the hardened Python sandbox image and runs `cargo test -p deepresearch-core --test sandbox -- --ignored` with `DEEPRESEARCH_SANDBOX_TESTS=1`
 
 ## Running the CI matrix locally
 
@@ -26,6 +27,8 @@ RUST_LOG=warn cargo run --offline -p deepresearch-cli bench "CI bench" --session
 cargo run --offline -p deepresearch-api &
 curl -s http://localhost:8080/health | jq .
 kill $!
+docker build -t deepresearch-python-sandbox:ci -f containers/python-sandbox/Dockerfile .
+DEEPRESEARCH_SANDBOX_TESTS=1 DEEPRESEARCH_SANDBOX_IMAGE=deepresearch-python-sandbox:ci cargo test -p deepresearch-core --test sandbox -- --ignored --nocapture
 ```
 
 > Tips:
