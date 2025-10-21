@@ -179,7 +179,9 @@ _Key artefacts (retained for reference):_ GraphTrace JSON, trace explain toggles
 **Target Window:** Weeks 10–12 of v0.2 cycle (post math-tool rollout)
 
 - Data Pipeline & Curation
-  - [ ] Automated ETL ingesting traces, verdicts, metrics, math outputs, respecting consent/retention
+  - [ ] Document session record schema + pipeline contract (`docs/M13_DATA_PIPELINE.md`)
+  - [ ] Persist structured session records on completion (query, verdict, math outputs, consent flags)
+  - [ ] Provide consolidation utility (merge JSONL → governed store) with consent/retention filtering
   - [ ] Taxonomise sessions (domain/confidence/manual review) with outcome labels for supervised tuning
   - [ ] Enforce retention, redaction, audit logging for compliance
 - Evaluation Harness

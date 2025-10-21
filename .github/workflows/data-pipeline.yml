@@ -1,0 +1,43 @@
+name: Data Pipeline Nightly
+
+on:
+  schedule:
+    - cron: "0 3 * * *" # 03:00 UTC daily
+  workflow_dispatch:
+
+jobs:
+  consolidate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registries
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-data-pipeline-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Consolidate session records
+        env:
+          DEEPRESEARCH_PIPELINE_DIR: data/pipeline/raw
+        run: |
+          cargo run -p data-pipeline -- data/pipeline/raw data/pipeline/curated
+
+      - name: List curated artefacts
+        run: ls -R data/pipeline/curated || true
+
+      - name: Upload curated dataset
+        uses: actions/upload-artifact@v4
+        with:
+          name: curated-sessions
+          path: data/pipeline/curated/*.parquet
+          if-no-files-found: warn
