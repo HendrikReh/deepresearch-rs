@@ -176,10 +176,11 @@ _Key artefacts (retained for reference):_ GraphTrace JSON, trace explain toggles
   - [x] CI validates container + Rust harness reproducibly; docs and runbooks enable engineering/ops teams to operate the sandbox
 
 ### M13 — Continual Learning & Behavioural Tuning
-**Target Window:** Weeks 10–12 of v0.2 cycle (post math-tool rollout)
 
 - Data Pipeline & Curation
-  - [ ] Automated ETL ingesting traces, verdicts, metrics, math outputs, respecting consent/retention
+  - [x] Document session record schema + pipeline contract (`docs/M13_DATA_PIPELINE.md`)
+  - [x] Persist structured session records on completion (query, verdict, math outputs, consent flags)
+  - [x] Provide consolidation utility (merge JSONL → governed store) with consent/retention filtering
   - [ ] Taxonomise sessions (domain/confidence/manual review) with outcome labels for supervised tuning
   - [ ] Enforce retention, redaction, audit logging for compliance
 - Evaluation Harness

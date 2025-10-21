@@ -2,6 +2,7 @@ use crate::logging::{SessionLogInput, log_session_completion};
 #[cfg(feature = "qdrant-retriever")]
 use crate::memory::qdrant::{HybridRetriever, QdrantConfig};
 use crate::memory::{DynRetriever, IngestDocument, StubRetriever};
+use crate::pipeline;
 use crate::sandbox::SandboxExecutor;
 use crate::tasks::{
     AnalystOutput, AnalystTask, CriticTask, FactCheckSettings, FactCheckTask, FinalizeTask,
@@ -161,7 +162,7 @@ fn build_outcome(
         warn!(%session_id, error = %err, "failed to record session log");
     }
 
-    Ok(SessionOutcome {
+    let outcome = SessionOutcome {
         session_id: session_id.to_string(),
         summary,
         trace_events: events,
@@ -172,7 +173,11 @@ fn build_outcome(
         factcheck_passed,
         factcheck_verified_sources,
         critic_confident,
-    })
+    };
+
+    pipeline::persist_session_record(session, &outcome);
+
+    Ok(outcome)
 }
 
 /// Hook for callers to mutate the graph before default wiring occurs.

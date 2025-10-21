@@ -148,4 +148,3 @@ GNU GPL v3 (or later). See [`LICENSE`](LICENSE).
 ---
 
 > “Explainable AI shouldn’t be an afterthought. DeepResearch proves you can design it in from day one.”
-
