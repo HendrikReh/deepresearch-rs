@@ -495,6 +495,8 @@ fn main() -> Result<()> {
         .with_target(false)
         .init();
 
+    deepresearch_core::init_metrics_from_env("deepresearch-cli")?;
+
     let cli = Cli::parse();
 
     let rt = Runtime::new()?;
@@ -511,6 +513,7 @@ fn main() -> Result<()> {
         Ok::<(), anyhow::Error>(())
     })?;
 
+    deepresearch_core::shutdown_metrics();
     Ok(())
 }
 

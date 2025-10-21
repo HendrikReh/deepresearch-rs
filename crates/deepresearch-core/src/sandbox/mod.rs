@@ -342,6 +342,13 @@ impl DockerSandboxRunner {
             );
         }
 
+        crate::record_sandbox_metrics(
+            status_label,
+            duration.as_millis() as u64,
+            collected_outputs.len(),
+            failure_streak as u64,
+        );
+
         Ok(SandboxResult {
             exit_code,
             stdout,

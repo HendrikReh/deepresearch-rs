@@ -6,6 +6,7 @@
 mod eval;
 mod logging;
 mod memory;
+mod metrics;
 mod sandbox;
 mod tasks;
 mod trace;
@@ -14,6 +15,7 @@ mod workflow;
 pub use eval::{EvaluationHarness, EvaluationMetrics};
 pub use logging::remove_session_logs;
 pub use memory::{IngestDocument, RetrievedDocument};
+pub use metrics::{init_metrics_from_env, record_sandbox_metrics, shutdown_metrics};
 pub use sandbox::{
     DockerRuntimeUser, DockerSandboxConfig, DockerSandboxRunner, SandboxExecutor, SandboxOutput,
     SandboxOutputKind, SandboxOutputSpec, SandboxRequest, SandboxResult,

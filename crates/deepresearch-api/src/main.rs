@@ -43,6 +43,8 @@ async fn main() -> Result<()> {
         .with_target(false)
         .init();
 
+    deepresearch_core::init_metrics_from_env("deepresearch-api")?;
+
     let addr: SocketAddr = std::env::var("DEEPRESEARCH_API_ADDR")
         .unwrap_or_else(|_| "0.0.0.0:8080".to_string())
         .parse()
@@ -95,6 +97,7 @@ async fn main() -> Result<()> {
         .with_graceful_shutdown(shutdown_signal())
         .await?;
 
+    deepresearch_core::shutdown_metrics();
     Ok(())
 }
 

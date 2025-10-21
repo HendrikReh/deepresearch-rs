@@ -84,7 +84,99 @@ When modifying the Dockerfile or test suite, replicate those commands locally to
 - Downstream tasks set `math.alert_required=true` and `math.degradation_note` whenever a timeout/failure occurs. Surface these fields in dashboards to highlight degraded sessions (Grafana example: query `math_alert_required{service="deepresearch-core"}` and display the degradation note as a panel annotation).
 - Recommended alert threshold: warn when `failure_streak >= 3` within a five-minute window, critical when `failure_streak >= 5`. Expose `math.alert_required` and `math.degradation_note` in dashboards (example Grafana query: `sum by(session_id) (math_alert_required{service="deepresearch-core"})`).
 
-### Example OTEL Collector snippet
+### Kubernetes OTEL Collector manifests (example)
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: otel-collector-config
+  namespace: deepresearch
+data:
+  collector.yaml: |
+    receivers:
+      filelog/sandbox:
+        include: [/var/log/deepresearch/*.log]
+        operators:
+          - type: json_parser
+            parse_from: body
+          - type: filter
+            expr: 'attributes["target"] == "telemetry.sandbox"'
+
+    processors:
+      batch: {}
+
+    exporters:
+      otlphttp/default:
+        endpoint: http://otel-gateway:4318
+      prometheus/default:
+        endpoint: 0.0.0.0:9464
+
+    service:
+      pipelines:
+        logs/sandbox:
+          receivers: [filelog/sandbox]
+          processors: [batch]
+          exporters: [otlphttp/default, prometheus/default]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: otel-collector
+  namespace: deepresearch
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: otel-collector
+  template:
+    metadata:
+      labels:
+        app: otel-collector
+    spec:
+      containers:
+        - name: collector
+          image: otel/opentelemetry-collector-contrib:0.96.0
+          args: ["--config=/etc/otel/collector.yaml"]
+          volumeMounts:
+            - name: config
+              mountPath: /etc/otel
+            - name: sandbox-logs
+              mountPath: /var/log/deepresearch
+          ports:
+            - containerPort: 9464
+              name: metrics
+            - containerPort: 4318
+              name: otlphttp
+      volumes:
+        - name: config
+          configMap:
+            name: otel-collector-config
+        - name: sandbox-logs
+          hostPath:
+            path: /var/log/deepresearch
+            type: Directory
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: otel-collector
+  namespace: deepresearch
+spec:
+  selector:
+    app: otel-collector
+  ports:
+    - name: otlphttp
+      port: 4318
+      targetPort: 4318
+    - name: metrics
+      port: 9464
+      targetPort: 9464
+```
+
+Mount the sandbox log directory appropriately (hostPath, CSI, or sidecar log shipping) to feed the filelog receiver. Adjust exporters to match your production endpoints.
+
+### Collector with transform processor
 
 ```yaml
 receivers:
@@ -176,6 +268,39 @@ processors:
 ```
 
 Now Prometheus scrapes the collector and stores the `telemetry_sandbox_failure_streak` metric. Load `http://localhost:9090` to graph the metric or verify the alert rule.
+
+### Runtime OTEL meter provider (Rust example)
+
+DeepResearch publishes sandbox metrics via the OpenTelemetry `Meter` API. To export them, install an OTLP meter provider in the process hosting the runtime:
+
+```rust
+use opentelemetry::{global, KeyValue};
+use opentelemetry_otlp::WithExportConfig;
+use opentelemetry_sdk::{runtime, Resource};
+
+pub fn init_meter_provider(service_name: &str, endpoint: &str) {
+    let resource = Resource::new(vec![KeyValue::new("service.name", service_name)]);
+    let provider = opentelemetry_otlp::new_pipeline()
+        .metrics(runtime::Tokio)
+        .with_exporter(
+            opentelemetry_otlp::new_exporter()
+                .tonic()
+                .with_endpoint(endpoint),
+        )
+        .with_resource(resource)
+        .with_period(std::time::Duration::from_secs(15))
+        .build()
+        .expect("failed to build OTLP metrics pipeline");
+
+    global::set_meter_provider(provider);
+}
+
+pub fn shutdown_meter_provider() {
+    global::shutdown_meter_provider();
+}
+```
+
+Call `init_meter_provider` early in your binary (CLI/API) and `shutdown_meter_provider` during shutdown to flush metrics. The OTEL Collector manifest above can then scrape and forward the emitted metrics.
 
 ---
 
