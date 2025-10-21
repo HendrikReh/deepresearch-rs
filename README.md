@@ -3,7 +3,7 @@
 DeepResearch is a graph-driven, Rust-first AI Research Assistant that proves every conclusion it delivers. Built atop `graph-flow`, Axum, and Qdrant, the system showcases how to operationalise **Explainable AI (XAI)** end-to-end: autonomous research, transparent reasoning, traceable evidence, and governance-ready artefacts.
 
 [![CI](https://github.com/HendrikReh/deepresearch-rs/actions/workflows/ci.yml/badge.svg)](https://github.com/your-org/deepresearch-rs/actions/workflows/ci.yml)
-![Version](https://img.shields.io/badge/version-0.2.12-informational.svg)
+![Version](https://img.shields.io/badge/version-0.2.13-informational.svg)
 [![Rust Edition](https://img.shields.io/badge/Rust-2024-blue.svg)](https://www.rust-lang.org/)
 [![OpenAI](https://img.shields.io/badge/OpenAI-Integration-brightgreen.svg)](https://openai.com)
 [![Collaboration](https://img.shields.io/badge/Collaboration-Welcome-orange.svg)](CONTRIBUTING.md)
