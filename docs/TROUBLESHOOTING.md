@@ -330,6 +330,65 @@ cargo run -F qdrant-retriever -p deepresearch-cli ingest \
 
 ---
 
+## Evaluation Harness Issues
+
+### Issue: Harness requires `--input`
+
+**Symptoms:**
+```
+error: the following required arguments were not provided:
+  --input <INPUT>
+```
+
+**Solution:** Always point to a curated snapshot:
+```bash
+cargo run -p eval-harness -- \
+  --input data/pipeline/curated/sessions_latest.json \
+  --output-dir data/eval/latest
+```
+
+### Issue: Snapshot missing (`No such file or directory`)
+
+**Symptoms:**
+```
+Error: open data/pipeline/curated/sessions_latest.json
+Caused by:
+    No such file or directory (os error 2)
+```
+
+**Root Cause:** The consolidation job has not produced a curated snapshot yet.
+
+**Solution:**
+1. Generate raw session logs by running the CLI/API at least once:
+   ```bash
+   cargo run -p deepresearch-cli -- query "use context7 baseline sanity" --format json
+   ```
+2. Consolidate the raw JSONL files:
+   ```bash
+   cargo run -p data-pipeline -- \
+     --raw-dir data/pipeline/raw \
+     --output-dir data/pipeline/curated
+   ```
+3. Re-run the harness against the new `sessions_latest.json`.
+
+### Issue: `evaluation thresholds exceeded`
+
+**Symptoms:**
+```
+Error: evaluation thresholds exceeded: verdict changed 2 > allowed 0
+```
+
+**Root Cause:** Verdict/math/manual deltas exceeded the configured `--max-*` limits or the bootstrap confidence interval crossed the permitted proportion.
+
+**Solution:**
+1. Review artefacts under `data/eval/latest/`:
+   - `report.json` / `report.md` for counts, CIs, and p-values.
+   - `dashboard.html` for a visual summary of guardrails and bucket metrics.
+   - `deltas/` JSONL batches for per-session diffs.
+2. Investigate the drift and remediate regressions. For exploratory runs you may temporarily relax thresholds (e.g., `--max-verdict-delta 2`), but keep stricter limits for promotion gating.
+
+---
+
 ## CI/CD Issues
 
 ### Issue: GitHub Actions CI failing on sandbox tests
@@ -383,4 +442,4 @@ If you encounter an issue not covered here:
 
 ---
 
-*Last updated: 2025-10-21*
+*Last updated: 2025-02-14*

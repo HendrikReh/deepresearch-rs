@@ -39,11 +39,22 @@ jobs:
         env:
           SNAPSHOT: ${{ steps.snapshot.outputs.snapshot }}
         run: |
-          cargo run -p eval-harness -- --input "$SNAPSHOT" --output-dir data/eval/latest --limit 100
+          cargo run -p eval-harness -- \
+            --input "$SNAPSHOT" \
+            --output-dir data/eval/latest \
+            --limit 100 \
+            --max-verdict-delta 0 \
+            --bootstrap-samples 2000 \
+            --batch-size 200 \
+            --delta-sample-limit 250
 
       - name: Upload evaluation report
         uses: actions/upload-artifact@v4
         with:
           name: evaluation-report
-          path: data/eval/latest/report.json
+          path: |
+            data/eval/latest/report.json
+            data/eval/latest/report.md
+            data/eval/latest/dashboard.html
+            data/eval/latest/deltas/
           if-no-files-found: error

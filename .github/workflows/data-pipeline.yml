@@ -49,5 +49,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: curated-sessions
-          path: data/pipeline/curated/*.parquet
+          path: |
+            data/pipeline/curated/*.json
+            data/pipeline/curated/sessions_latest.json
           if-no-files-found: warn
