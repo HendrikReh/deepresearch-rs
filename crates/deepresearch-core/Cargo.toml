@@ -1,6 +1,6 @@
 [package]
 name = "deepresearch-core"
-version = "0.2.1"
+version = "0.2.12"
 edition = "2024"
 
 [lib]
@@ -26,6 +26,8 @@ once_cell = { workspace = true }
 regex = { workspace = true }
 fastembed = { workspace = true, optional = true }
 qdrant-client = { workspace = true, optional = true }
+thiserror = { workspace = true }
+libc = { workspace = true }
 
 [dev-dependencies]
 tempfile = "3"
