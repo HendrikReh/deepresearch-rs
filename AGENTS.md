@@ -49,6 +49,11 @@ Agents may extend their behaviour by reading/writing new context keys; the workf
 | `math.result` | `MathToolTask` | `MathToolResult` (status, stdout/stderr, outputs) | Captures execution status, metrics, and artefacts. |
 | `math.outputs` | `MathToolTask` | `Vec<MathToolOutput>` | Binary/text artefacts emitted by the script (PNG/SVG/PDF/etc.). |
 | `math.status` | `MathToolTask` | `String` (`success`, `failure`, `timeout`, `skipped`) | Convenience status used by downstream tasks for branching. |
+| `math.degradation_note` | `MathToolTask` | `String` | Operator-facing message when sandbox execution degrades (appended to analyst summary). |
+| `math.retry_recommended` | `MathToolTask` | `bool` | Indicates whether retrying the sandbox is advisable. |
+| `math.alert_required` | `MathToolTask` | `bool` | Flags hard failures/timeouts; mirror in dashboards for alerting. |
+| `analysis.math_retry_recommended` | `AnalystTask` | `bool` | Propagates retry guidance downstream if math degraded. |
+| `analysis.math_alert_required` | `AnalystTask` | `bool` | Signals to Critic/clients that math outputs were unavailable. |
 | `critique.confident` | `CriticTask` | `bool` | Indicates whether automated checks pass (set synchronously for conditional edge). |
 | `critique.verdict` | `CriticTask` | `String` | Human-readable verdict surfaced to the end user. |
 | `final.summary` | `FinalizeTask` / `ManualReviewTask` | `String` | Final message returned to the caller. |

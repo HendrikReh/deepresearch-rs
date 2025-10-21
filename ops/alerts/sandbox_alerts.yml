@@ -1,0 +1,11 @@
+groups:
+  - name: sandbox
+    rules:
+      - alert: SandboxFailureBurst
+        expr: max_over_time(telemetry_sandbox_failure_streak[5m]) >= 3
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Sandbox failures >=3 in the last 5 minutes"
+          description: "Investigate math tool degradation for job {{ $labels.job }}"

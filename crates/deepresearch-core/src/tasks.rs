@@ -156,6 +156,7 @@ async fn persist_math_result(
     context
         .set("math.retry_recommended", retry_recommended)
         .await;
+    context.set("math.alert_required", retry_recommended).await;
     let degradation_note = if retry_recommended {
         Some(format!(
             "Math tool {}. Falling back to non-numeric reasoning.",
@@ -473,6 +474,13 @@ impl Task for AnalystTask {
             .get("research.sources")
             .await
             .unwrap_or_else(default_sources);
+        let degradation_note: String = context
+            .get("math.degradation_note")
+            .await
+            .unwrap_or_default();
+        let math_retry_recommended: bool =
+            context.get("math.retry_recommended").await.unwrap_or(false);
+        let math_alert_required: bool = context.get("math.alert_required").await.unwrap_or(false);
 
         debug!(
             findings_count = findings.len(),
@@ -480,7 +488,7 @@ impl Task for AnalystTask {
             "analyst synthesizing results"
         );
 
-        let summary = if findings.is_empty() {
+        let mut summary = if findings.is_empty() {
             "No findings available; analyst requires additional research input".to_string()
         } else {
             format!(
@@ -490,6 +498,10 @@ impl Task for AnalystTask {
             )
         };
 
+        if !degradation_note.trim().is_empty() {
+            summary.push_str(&format!("\nNote: {}", degradation_note));
+        }
+
         let structured = AnalystOutput {
             summary: summary.clone(),
             highlight: findings.first().cloned().unwrap_or_default(),
@@ -497,6 +509,18 @@ impl Task for AnalystTask {
         };
 
         context.set("analysis.output", &structured).await;
+        context
+            .set("analysis.math_retry_recommended", math_retry_recommended)
+            .await;
+        context
+            .set("analysis.math_alert_required", math_alert_required)
+            .await;
+        if math_alert_required {
+            warn!(
+                target: "telemetry.sandbox",
+                "analyst proceeding without math outputs"
+            );
+        }
 
         info!(
             summary = %structured.summary,

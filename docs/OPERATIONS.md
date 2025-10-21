@@ -77,7 +77,109 @@ When modifying the Dockerfile or test suite, replicate those commands locally to
 
 ---
 
-## 5. Image Hygiene
+## 5. Sandbox Telemetry & Alerts
+
+- Each sandbox run emits `telemetry.sandbox` events via `tracing` with `status`, `duration_ms`, `outputs`, and `failure_streak` fields. Route these to your observability pipeline by tailing stdout/stderr (e.g., use the OpenTelemetry Collector `filelog` receiver or Vector's `stdin` source) and forward to OTLP/Prometheus as needed.
+- Consecutive failures increment the `failure_streak`. When the streak reaches 3, the runner logs an error-level event so alerting systems can page on persistent breakage.
+- Downstream tasks set `math.alert_required=true` and `math.degradation_note` whenever a timeout/failure occurs. Surface these fields in dashboards to highlight degraded sessions (Grafana example: query `math_alert_required{service="deepresearch-core"}` and display the degradation note as a panel annotation).
+- Recommended alert threshold: warn when `failure_streak >= 3` within a five-minute window, critical when `failure_streak >= 5`. Expose `math.alert_required` and `math.degradation_note` in dashboards (example Grafana query: `sum by(session_id) (math_alert_required{service="deepresearch-core"})`).
+
+### Example OTEL Collector snippet
+
+```yaml
+receivers:
+  filelog/sandbox:
+    include: [/var/log/deepresearch/*.log]
+    operators:
+      - type: regex_parser
+        regex: '^(?P<time>[^ ]+)\s+(?P<level>[^ ]+)\s+(?P<target>[^ ]+)\s+-\s+(?P<body>.*)$'
+        timestamp:
+          parse_from: time
+          layout: '%Y-%m-%dT%H:%M:%S%.fZ'
+        severity:
+          parse_from: level
+      - type: filter
+        expr: 'attributes["target"] == "telemetry.sandbox"'
+
+processors:
+  batch: {}
+
+exporters:
+  otlphttp:
+    endpoint: http://otel-gateway:4318
+
+service:
+  pipelines:
+    logs/sandbox:
+      receivers: [filelog/sandbox]
+      processors: [batch]
+      exporters: [otlphttp]
+```
+
+Feed the resulting log stream into your metric pipeline (for example with the collector's `transform` processor) to emit a counter on `failure_streak`. A simple Prometheus alert reads:
+
+```yaml
+alert: SandboxFailureBurst
+expr: max_over_time(telemetry_sandbox_failure_streak[5m]) >= 3
+for: 2m
+labels:
+  severity: warning
+annotations:
+  summary: "Sandbox failures >=3 in the last 5 minutes"
+  description: "Investigate math tool degradation for job {{ $labels.job }}"
+```
+
+### Optional Prometheus container for local testing
+
+To experiment locally, run Prometheus alongside the collector:
+
+```bash
+docker run -d --name prometheus \
+  -p 9090:9090 \
+  -v $(pwd)/ops/prometheus.yml:/etc/prometheus/prometheus.yml:ro \
+  prom/prometheus:latest
+```
+
+Sample `ops/prometheus.yml` scraping the collector’s Prometheus exporter:
+
+```yaml
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  - job_name: 'deepresearch-sandbox'
+    static_configs:
+      - targets: ['otel-gateway:9464']
+```
+
+Update the OTEL collector pipeline to add a Prometheus exporter that exposes metrics derived from the sandbox logs:
+
+```yaml
+exporters:
+  prometheus:
+    endpoint: 0.0.0.0:9464
+
+service:
+  pipelines:
+    logs/sandbox:
+      receivers: [filelog/sandbox]
+      processors: [batch, transform/sandbox_metrics]
+      exporters: [otlphttp, prometheus]
+
+processors:
+  transform/sandbox_metrics:
+    error_mode: ignore
+    log_statements:
+      - context: log
+        statements:
+          - set(metric.telemetry_sandbox_failure_streak, attributes.failure_streak)
+```
+
+Now Prometheus scrapes the collector and stores the `telemetry_sandbox_failure_streak` metric. Load `http://localhost:9090` to graph the metric or verify the alert rule.
+
+---
+
+## 6. Image Hygiene
 
 - List images: `docker images | grep deepresearch`
 - Remove unused sandbox tags: `docker image rm deepresearch-python-sandbox:<tag>`
@@ -85,7 +187,7 @@ When modifying the Dockerfile or test suite, replicate those commands locally to
 
 ---
 
-## 6. Troubleshooting
+## 7. Troubleshooting
 
 | Issue | Symptoms | Remediation |
 |-------|----------|-------------|
@@ -96,7 +198,7 @@ When modifying the Dockerfile or test suite, replicate those commands locally to
 
 ---
 
-## 7. Reference Commands
+## 8. Reference Commands
 
 | Purpose | Command |
 |---------|---------|

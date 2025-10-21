@@ -158,16 +158,16 @@ _Key artefacts (retained for reference):_ GraphTrace JSON, trace explain toggles
 - Workflow Integration
   - [x] Implement Rust sandbox orchestrator (Bollard or CLI wrapper) to prepare temp dirs, run scripts, stream logs, and clean up outputs
   - [x] Route Researcher/Analyst flows through sandbox execution and writing `math.*` context keys
-  - [ ] Handle failure modes (timeouts, non-zero exit, missing outputs) with retries and graceful degradation paths
+  - [x] Handle failure modes (timeouts, non-zero exit, missing outputs) with retries and graceful degradation paths
 - Reliability & Operations
-  - [ ] Emit sandbox health/readiness metrics (latency, exit status, resource usage) via OTEL; alert on repeated failures
+  - [x] Emit sandbox health/readiness metrics (latency, exit status, resource usage) via OTEL; alert on repeated failures
   - [ ] Add docker-compose overrides for GUI/API sandbox usage and publish runbooks for image updates, vulnerability patches, and scaling knobs
 - Testing & Quality
   - [ ] Integration tests executing sample scripts (plots, Graphviz, Mermaid) through the sandbox pipeline with fixture verification
   - [ ] CI coverage for container build, Rust↔Python smoke tests, and regression snapshots guarding format/precision drift
 - Documentation & Security
-  - [ ] Contributor guide for sandbox image development (linting, formatting, dependency management) and local iteration workflow
-  - [ ] Security guidance covering sandbox boundaries, allowed libraries, secret injection policy, and cleanup procedures
+  - [x] Contributor guide for sandbox image development (linting, formatting, dependency management) and local iteration workflow
+  - [x] Security guidance covering sandbox boundaries, allowed libraries, secret injection policy, and cleanup procedures
 - Dependencies & Coordination
   - [ ] Align sandbox API with platform/security stakeholders; schedule security review and ops sign-off prior to enablement
 - Acceptance Criteria

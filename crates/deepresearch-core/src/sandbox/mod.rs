@@ -299,8 +299,9 @@ impl DockerSandboxRunner {
         drop(guard);
 
         let success = !timed_out && exit_code.unwrap_or(-1) == 0;
-        if success {
-            SANDBOX_FAILURE_STREAK.store(0, Ordering::Relaxed);
+        let failure_streak = if success {
+            SANDBOX_FAILURE_STREAK.swap(0, Ordering::Relaxed);
+            0
         } else {
             let streak = SANDBOX_FAILURE_STREAK.fetch_add(1, Ordering::Relaxed) + 1;
             if streak >= 3 {
@@ -309,7 +310,8 @@ impl DockerSandboxRunner {
                     "sandbox consecutive failure streak exceeded threshold"
                 );
             }
-        }
+            streak
+        };
 
         let status_label = if timed_out {
             "timeout"
@@ -320,13 +322,25 @@ impl DockerSandboxRunner {
         };
 
         info!(
+            target: "telemetry.sandbox",
             status = status_label,
             exit_code,
             timed_out,
             duration_ms = duration.as_millis() as u64,
             outputs = collected_outputs.len(),
+            failure_streak,
             "sandbox execution finished"
         );
+
+        if !success {
+            warn!(
+                target: "telemetry.sandbox",
+                status = status_label,
+                overdue_failures = failure_streak,
+                duration_ms = duration.as_millis() as u64,
+                "sandbox execution degraded; consider retrying or alerting operations"
+            );
+        }
 
         Ok(SandboxResult {
             exit_code,
