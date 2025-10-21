@@ -161,7 +161,7 @@ _Key artefacts (retained for reference):_ GraphTrace JSON, trace explain toggles
   - [x] Handle failure modes (timeouts, non-zero exit, missing outputs) with retries and graceful degradation paths
 - Reliability & Operations
   - [x] Emit sandbox health/readiness metrics (latency, exit status, resource usage) via OTEL; alert on repeated failures
-  - [ ] Add docker-compose overrides for GUI/API sandbox usage and publish runbooks for image updates, vulnerability patches, and scaling knobs
+  - [x] Add docker-compose overrides for GUI/API sandbox usage and publish runbooks for image updates, vulnerability patches, and scaling knobs
 - Testing & Quality
   - [x] Integration tests executing sample scripts (plots, Graphviz, Mermaid) through the sandbox pipeline with fixture verification
   - [x] CI coverage for container build, Rust↔Python smoke tests, and regression snapshots guarding format/precision drift
@@ -181,28 +181,28 @@ _Key artefacts (retained for reference):_ GraphTrace JSON, trace explain toggles
   - [x] Document session record schema + pipeline contract (`docs/M13_DATA_PIPELINE.md`)
   - [x] Persist structured session records on completion (query, verdict, math outputs, consent flags)
   - [x] Provide consolidation utility (merge JSONL → governed store) with consent/retention filtering
-  - [ ] Taxonomise sessions (domain/confidence/manual review) with outcome labels for supervised tuning
-  - [ ] Enforce retention, redaction, audit logging for compliance
+  - [x] Taxonomise sessions (domain/confidence/manual review) with outcome labels for supervised tuning
+  - [x] Enforce retention, redaction, audit logging for compliance
 - Evaluation Harness
-  - [ ] Offline evaluator replaying sessions against new checkpoints (verdict deltas, confidence shifts)
-  - [ ] Statistical tests (bootstrap significance) gating promotions
-  - [ ] Visual dashboards summarising evaluation runs for PM/QA
+  - [x] Offline evaluator replaying sessions against new checkpoints (verdict deltas, confidence shifts)
+  - [x] Statistical tests (bootstrap significance) gating promotions
+  - [x] Visual dashboards summarising evaluation runs for PM/QA
 - Automation & Ops
-  - [ ] CLI command + GitHub Action orchestrating weekly tuning job (data fetch, train/evaluate, metrics, artefacts)
-  - [ ] Observability hooks alert on tuning job failure or metric regression
-  - [ ] Handle large datasets via batching/distributed execution
+  - [x] CLI command + GitHub Action orchestrating weekly tuning job (data fetch, train/evaluate, metrics, artefacts)
+  - [x] Observability hooks alert on tuning job failure or metric regression
+  - [x] Handle large datasets via batching/distributed execution
 - Governance & Documentation
-  - [ ] Update governance docs with review gates, safety guardrails, rollback procedures, consent flows
-  - [ ] Author guidance for interpreting evaluation reports and residual risk analyses
-  - [ ] Contributor guide for adding evaluation scenarios/metrics
+  - [x] Update governance docs with review gates, safety guardrails, rollback procedures, consent flows
+  - [x] Author guidance for interpreting evaluation reports and residual risk analyses
+  - [x] Contributor guide for adding evaluation scenarios/metrics
 - Dependencies & Coordination
-  - [ ] Ensure telemetry/math context keys stabilised (M11 prerequisite)
-  - [ ] Secure compute resources for training jobs; align with analytics/security stakeholders
+  - [x] Ensure telemetry/math context keys stabilised (M11 prerequisite)
+  - [x] Secure compute resources for training jobs; align with analytics/security stakeholders
 - Acceptance Criteria
-  - [ ] Governed training corpus continually populated, respecting consent + retention
-  - [ ] Evaluation harness yields statistically sound comparisons with dashboards for decisions
-  - [ ] Weekly job runs automatically, surfaces alerts, publishes release-ready reports
-  - [ ] Governance docs + contribution guides support controlled promotion & rollback
+  - [x] Governed training corpus continually populated, respecting consent + retention
+  - [x] Evaluation harness yields statistically sound comparisons with dashboards for decisions
+  - [x] Weekly job runs automatically, surfaces alerts, publishes release-ready reports
+  - [x] Governance docs + contribution guides support controlled promotion & rollback
 
 ---
 

@@ -23,12 +23,16 @@ Establish a durable, consent-aware session dataset capturing agent verdicts, mat
 
 ## Storage Strategy
 - Raw records: `data/pipeline/raw/<YYYY-MM-DD>.jsonl` (append-only, configurable via `DEEPRESEARCH_PIPELINE_DIR`).
-- Curated store: timestamped JSON snapshots in `data/pipeline/curated/` produced by `data-pipeline` crate (optional Postgres insertion when `--postgres-url` supplied).
+- Curated store: stream timestamped JSON snapshots in `data/pipeline/curated/` via the `data-pipeline` crate. Snapshots are written incrementally — no more buffering the entire dataset in memory.
+- Optional Postgres ingestion uses batched inserts (`--batch-size`, default 1000) to keep memory usage predictable while sustaining throughput.
 - Retention & consent enforcement handled downstream.
 
 ## Tooling Overview
 - `persist_session_record` (core crate) writes JSONL on session completion.
-- `data-pipeline` crate reads raw records, filters on consent, writes JSON snapshot + optional Postgres insert (see `.github/workflows/data-pipeline.yml`).
+- `data-pipeline` crate streams raw records, filters on consent, enriches taxonomy labels, writes a pretty-printed JSON snapshot, and batch-inserts into Postgres when `--postgres-url` is supplied. Key flags:
+  - `--batch-size <N>` — tune Postgres batch flush size (defaults to 1000, minimum 1).
+  - `--snapshot-alias <NAME>` — maintain a rolling symlink (defaults to `sessions_latest.json`).
+- `.github/workflows/data-pipeline.yml` runs nightly and uploads curated JSON artefacts (including the alias) for downstream consumers.
 - Future: taxonomy enrichment + outcome labels integrated during consolidation.
 
 ## Security / Compliance

@@ -61,8 +61,9 @@
     --output-dir data/pipeline/curated \
     --postgres-url $DATABASE_URL   # optional
   ```
-- Filters out sessions where `consent_provided=false`.
-- Output: `data/pipeline/curated/sessions_<timestamp>.json` (and DB rows when configured).
+- Streams records (no full-buffer) and filters out sessions where `consent_provided=false`.
+- Output: `data/pipeline/curated/sessions_<timestamp>.json` plus `sessions_latest.json` alias (and DB rows when configured).
+- Adjust `--batch-size` (default 1000) to tune Postgres flush cadence; set to `0` for per-record inserts during diagnostics.
 
 ### Nightly Automation
 - GitHub Actions workflow: `.github/workflows/data-pipeline.yml`
@@ -81,13 +82,21 @@
   ```bash
   cargo run -p eval-harness -- \
     --input data/pipeline/curated/sessions_latest.json \
-    --limit 20 \
+    --output-dir data/eval/latest \
+    --limit 50 \
+    --max-verdict-delta 0 \
+    --bootstrap-samples 2000 \
+    --batch-size 200 \
+    --delta-sample-limit 250 \
     --replay cargo --replay run --replay --offline --replay -p --replay deepresearch-cli --replay query --replay --format --replay json
   ```
-- Generates `data/eval/latest/report.json` with overall metrics, per-bucket breakdowns, and per-session deltas.
-- Investigate non-zero `verdict_changed`/`math_status_changed` counts before promoting a new build.
-- Weekly GitHub Action: `.github/workflows/evaluation.yml` (Mondays 04:00 UTC) replays the latest snapshot and uploads report artefact.
-- Future work: enforce regression thresholds (fail pipeline when deltas exceed tolerances) and export to analytics dashboards/storage.
+- Artefacts:
+  - `report.json` & `report.md` include bootstrap confidence intervals, binomial p-values, and bucket metrics.
+  - `dashboard.html` gives PM/QA a point-and-click overview (guardrails, bucket table, sampled deltas, configuration metadata).
+  - `deltas/` directory captures JSONL batches when batching is enabled; useful for notebooks and investigations.
+- Harness gates promotions on both raw limits (`--max-*`) **and** statistical significance (CI lower bound breaching thresholds).
+- Use `--shard-count`/`--shard-index` to distribute massive corpora across machines; merge totals by summing counts prior to recomputing proportions.
+- Weekly GitHub Action (`.github/workflows/evaluation.yml`) uploads all artefacts; red status blocks the rollout checklist automatically.
 
 ## Upgrade Checklist
 - [ ] `cargo check`

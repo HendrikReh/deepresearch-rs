@@ -4,6 +4,8 @@ use sqlx::{Executor, Pool, Postgres};
 
 use crate::SessionRecord;
 
+pub type SessionPool = Pool<Postgres>;
+
 pub async fn init_pool(database_url: &str) -> Result<Pool<Postgres>> {
     let pool = PgPoolOptions::new()
         .max_connections(5)
@@ -43,52 +45,57 @@ pub async fn insert_records(pool: &Pool<Postgres>, records: &[SessionRecord]) ->
         return Ok(());
     }
 
+    let mut tx = pool.begin().await?;
+
     for record in records {
         let math_outputs =
             serde_json::to_value(&record.math_outputs).context("serialize math outputs")?;
         let recorded_at = chrono::DateTime::parse_from_rfc3339(&record.timestamp)
             .map(|dt| dt.with_timezone(&chrono::Utc))
             .context("parse timestamp")?;
-        sqlx::query(
-            r#"
-            INSERT INTO session_records (
-                session_id,
-                recorded_at,
-                query,
-                verdict,
-                requires_manual_review,
-                math_status,
-                math_alert_required,
-                math_stdout,
-                math_stderr,
-                trace_path,
-                sandbox_failure_streak,
-                domain_label,
-                confidence_bucket,
-                consent_provided,
-                math_outputs
-            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
-            ON CONFLICT (session_id, recorded_at) DO NOTHING
-            "#,
+        tx.execute(
+            sqlx::query(
+                r#"
+                INSERT INTO session_records (
+                    session_id,
+                    recorded_at,
+                    query,
+                    verdict,
+                    requires_manual_review,
+                    math_status,
+                    math_alert_required,
+                    math_stdout,
+                    math_stderr,
+                    trace_path,
+                    sandbox_failure_streak,
+                    domain_label,
+                    confidence_bucket,
+                    consent_provided,
+                    math_outputs
+                ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+                ON CONFLICT (session_id, recorded_at) DO NOTHING
+                "#,
+            )
+            .bind(&record.session_id)
+            .bind(recorded_at)
+            .bind(&record.query)
+            .bind(&record.verdict)
+            .bind(record.requires_manual_review)
+            .bind(&record.math_status)
+            .bind(record.math_alert_required)
+            .bind(&record.math_stdout)
+            .bind(&record.math_stderr)
+            .bind(&record.trace_path)
+            .bind(record.sandbox_failure_streak.map(|v| v as i32))
+            .bind(&record.domain_label)
+            .bind(&record.confidence_bucket)
+            .bind(record.consent_provided)
+            .bind(math_outputs),
         )
-        .bind(&record.session_id)
-        .bind(recorded_at)
-        .bind(&record.query)
-        .bind(&record.verdict)
-        .bind(record.requires_manual_review)
-        .bind(&record.math_status)
-        .bind(record.math_alert_required)
-        .bind(&record.math_stdout)
-        .bind(&record.math_stderr)
-        .bind(&record.trace_path)
-        .bind(record.sandbox_failure_streak.map(|v| v as i32))
-        .bind(&record.domain_label)
-        .bind(&record.confidence_bucket)
-        .bind(record.consent_provided)
-        .bind(math_outputs)
-        .execute(pool)
         .await?;
     }
+
+    tx.commit().await?;
 
     Ok(())
 }
