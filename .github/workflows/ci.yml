@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [ master, main, Secure_Code_Execution_M12_v0.2.x ]
+    branches: [ master, main, v0.2.13 ]
   pull_request:
-    branches: [ master, main,Secure_Code_Execution_M12_v0.2.x ]
+    branches: [ master, main, v0.2.13 ]
 
 jobs:
   build:
