@@ -21,7 +21,7 @@ The continual-learning loop introduces new training data, evaluation artefacts, 
 
 ## Consent & Retention
 - The data pipeline strips sessions where `consent_provided != true` before generating curated snapshots or inserting into Postgres.
-- Snapshots are immutable; retention is governed by the storage policy documented in `docs/OPERATIONS.md` (default 90 days for raw JSONL, configurable for curated exports).
+- Snapshots are immutable; retention is governed by the storage policy documented in `docs/operations/OPERATIONS.md` (default 90 days for raw JSONL, configurable for curated exports).
 - Downstream consumers must reference `sessions_latest.json` to inherit the latest consent-filtered dataset.
 
 ## Compute Resource Planning

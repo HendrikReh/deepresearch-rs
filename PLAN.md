@@ -69,12 +69,12 @@ This plan preserves the history of completed project milestones. Update checkbox
 - [x] Validate release criteria from PRD (≥80% fact verification, CLI/API stability, docs updated).
 - [x] Prepare release checklist, tagging, and README/PRD alignment.
 - [x] Provide CLI benchmarking utility (`bench`) for throughput tuning and latency measurement experiments.
-- [x] `/health` monitoring, CLI bench latency gates (CI thresholds avg ≤350 ms / p95 ≤400 ms), and `docs/RELEASE_CHECKLIST.md` capturing performance + compliance verification.
+- [x] `/health` monitoring, CLI bench latency gates (CI thresholds avg ≤350 ms / p95 ≤400 ms), and `docs/release/RELEASE_CHECKLIST.md` capturing performance + compliance verification.
 
 ## Cross-Cutting Tasks ✅
-- [x] Establish testing harness (`cargo test --offline`) and expand CI documentation (`docs/CI_GUIDE.md`, CI workflow enforcing fmt/clippy/tests/snapshot/bench/API).
+- [x] Establish testing harness (`cargo test --offline`) and expand CI documentation (`docs/release/CI_GUIDE.md`, CI workflow enforcing fmt/clippy/tests/snapshot/bench/API).
 - [x] Maintain `AGENTS.md` when adding/removing context keys or tasks (updated with CI commands).
-- [x] Keep `docs/TESTING_GUIDE.md` aligned with the active milestone.
+- [x] Keep `docs/getting-started/TESTING_GUIDE.md` aligned with the active milestone.
 
 ### M10 — Axum GUI Foundations ✅
 
@@ -123,7 +123,7 @@ This plan preserves the history of completed project milestones. Update checkbox
 
 #### Quality & Documentation
 - [x] Extend GUI integration tests to cover explainability toggles, download endpoints, and DAG rendering fallbacks.
-- [x] Update `docs/GUI_ACCEPTANCE.md` with the new explainability scenarios and add troubleshooting notes for telemetry configuration.
+- [x] Update `docs/getting-started/GUI_ACCEPTANCE.md` with the new explainability scenarios and add troubleshooting notes for telemetry configuration.
 - [x] Provide operator guidance on sizing OTEL exporters and alert thresholds for stream failure rates.
 
 #### Dependencies & Coordination
@@ -178,7 +178,7 @@ _Key artefacts (retained for reference):_ GraphTrace JSON, trace explain toggles
 ### M13 — Continual Learning & Behavioural Tuning
 
 - Data Pipeline & Curation
-  - [x] Document session record schema + pipeline contract (`docs/M13_DATA_PIPELINE.md`)
+  - [x] Document session record schema + pipeline contract (`docs/evaluation/M13_DATA_PIPELINE.md`)
   - [x] Persist structured session records on completion (query, verdict, math outputs, consent flags)
   - [x] Provide consolidation utility (merge JSONL → governed store) with consent/retention filtering
   - [x] Taxonomise sessions (domain/confidence/manual review) with outcome labels for supervised tuning

@@ -17,9 +17,9 @@ This guide outlines the workflow for extending the evaluation harness with new s
 - For heavy scenarios, consider adding dedicated jobs or shards. Use descriptive artifact names (e.g., `evaluation-report-domain-finance`).
 
 ## 4. Document Behaviour
-- Update `docs/M13_EVALUATION.md` with the new metric, interpretation guidance, and any CLI examples.
+- Update `docs/evaluation/M13_EVALUATION.md` with the new metric, interpretation guidance, and any CLI examples.
 - Note dashboard updates (table columns, panels) so PM/QA know where to look.
-- If the change alters governance expectations, cross-link the relevant section in `docs/M13_GOVERNANCE.md`.
+- If the change alters governance expectations, cross-link the relevant section in `docs/governance/M13_GOVERNANCE.md`.
 
 ## 5. Add Tests
 - Unit tests should cover aggregation and formatting logic (e.g., check bootstrap calculations, markdown tables).

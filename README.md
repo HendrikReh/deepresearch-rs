@@ -142,6 +142,15 @@ We welcome contributions that deepen explainability:
 
 ---
 
+## Documentation References
+- **Getting Started (`docs/getting-started/`)**: [Usage](docs/getting-started/USAGE.md), [Testing Guide](docs/getting-started/TESTING_GUIDE.md), [GUI Deployment](docs/getting-started/GUI_DEPLOYMENT.md), [GUI Acceptance](docs/getting-started/GUI_ACCEPTANCE.md).
+- **Operations (`docs/operations/`)**: [Operations Guide](docs/operations/OPERATIONS.md), [Sandbox Runbook](docs/operations/RUNBOOK_SANDBOX_OPERATIONS.md), [Troubleshooting](docs/operations/TROUBLESHOOTING.md), [Security Review](docs/operations/SECURITY_REVIEW_SANDBOX.md), [Operational Checklist](docs/operations/CHECKLIST.md).
+- **Evaluation (`docs/evaluation/`)**: [Evaluation Playbook](docs/evaluation/M13_EVALUATION.md), [Data Pipeline](docs/evaluation/M13_DATA_PIPELINE.md), [Evaluation Contributing](docs/evaluation/EVALUATION_CONTRIBUTING.md).
+- **Governance (`docs/governance/`)**: [Governance Overview](docs/governance/M13_GOVERNANCE.md).
+- **Release (`docs/release/`)**: [Release Checklist](docs/release/RELEASE_CHECKLIST.md), [CI Guide](docs/release/CI_GUIDE.md).
+
+---
+
 ## License
 GNU GPL v3 (or later). See [`LICENSE`](LICENSE).
 

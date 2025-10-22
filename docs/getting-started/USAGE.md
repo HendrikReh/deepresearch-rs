@@ -250,7 +250,7 @@ rm -rf data/qdrant data/postgres
 rm -rf .fastembed_cache
 ```
 
-With the retrieval layer active, the Researcher task will pull real documents from Qdrant, and the critic summary will enumerate the ingested sources. Refer back to `docs/TESTING_GUIDE.md` for verification steps and `AGENTS.md` for deeper architectural context.
+With the retrieval layer active, the Researcher task will pull real documents from Qdrant, and the critic summary will enumerate the ingested sources. Refer back to `docs/getting-started/TESTING_GUIDE.md` for verification steps and `AGENTS.md` for deeper architectural context.
 
 ---
 

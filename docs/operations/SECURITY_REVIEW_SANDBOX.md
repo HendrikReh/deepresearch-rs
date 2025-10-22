@@ -23,7 +23,7 @@
 - Prometheus integration sample provided (`ops/prometheus.yml` + alerts) covering `SandboxFailureBurst` >= 3 failures within 5 minutes.
 
 ## Operational Runbook
-- Image build/publish process (`docs/RUNBOOK_SANDBOX_OPERATIONS.md`).
+- Image build/publish process (`docs/operations/RUNBOOK_SANDBOX_OPERATIONS.md`).
 - Docker Compose overrides for local + staging validation (`docker-compose.overrides/`).
 - OTEL collector manifests (`ops/otel/collector.yaml`) + Prometheus alerts.
 

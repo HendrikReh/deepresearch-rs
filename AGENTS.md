@@ -158,7 +158,7 @@ ingest_documents(IngestOptions {
 - **Persistence:** Replace `InMemorySessionStorage` with the `PostgresSessionStorage` from the crate when durability is required.  
 - **Ingestion:** Use `deepresearch-cli ingest --session <id> --path <docs> --qdrant-url http://localhost:6334` to index local files into Qdrant (ensure port 6334 is exposed with `QDRANT__SERVICE__GRPC_PORT=6334`).
 - **Evaluation:** Analyse nightly logs with `EvaluationHarness::analyze_log(...)` to track fact-check confidence and failures.
-- **CI**: GitHub Actions enforces fmt/clippy/tests/snapshot/bench/API; see `docs/CI_GUIDE.md` for the full matrix.
+- **CI**: GitHub Actions enforces fmt/clippy/tests/snapshot/bench/API; see `docs/release/CI_GUIDE.md` for the full matrix.
 
 Document any new context keys or task IDs in this file to keep downstream contributors aligned.
 

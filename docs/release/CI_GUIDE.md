@@ -39,5 +39,5 @@ DEEPRESEARCH_SANDBOX_TESTS=1 DEEPRESEARCH_SANDBOX_IMAGE=deepresearch-python-sand
 ## Updating the workflow
 
 - Add new checks to `.github/workflows/ci.yml`
-- Reflect additions in this guide and `docs/TESTING_GUIDE.md`
+- Reflect additions in this guide and `docs/getting-started/TESTING_GUIDE.md`
 - Ensure new commands have suitable offline flags or caching to keep CI fast
